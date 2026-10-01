@@ -4,6 +4,7 @@ import { advance, cloneSnapshot, decode, encode, terminal, type Snapshot } from 
 import { DEFAULT_OPTIONS, type Options, type SolveResult } from './ai/solver';
 import { RolloutPool } from './ai/rollout-pool';
 import { StrongPool } from './ai/strong-pool';
+import { AutoTuner, autoSummary, type AutoProbe, type AutoSettings } from './ai/auto-params';
 import { exportTas, importTas, sameSnapshot, tasAdvance, type TasOptions, type TasPlan } from './ai/tas';
 
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -18,11 +19,29 @@ let worker: Worker | null = null, controller: AbortController | null = null;
 const idleWorkers: Partial<Record<'cpu' | 'tas', Worker>> = {};
 const rolloutPool = new RolloutPool();
 const strongPool = new StrongPool();
+const autoTuner = new AutoTuner();
+let approximateParameters = 'auto', budgetGroup: 'ordinary' | 'tas' = 'ordinary';
+const manualBudgets = { ordinary: '200', tas: '30000' };
 let pendingReject: ((error: Error) => void) | null = null;
 interface Device { available: boolean; name?: string; reason?: string; autoThreshold?: { size: number; minHorizon: number; minTrajectories: number } | null }
 let device: Device = { available: false };
 let tas: TasPlan | null = null, tasCursor = 0, tasPreview: number | null = null;
 const isTas = () => select('algorithm').value === 'tas';
+const usesAuto = () => select('parameter-mode').value === 'auto' && ['expectimax', 'strong', 'rollout'].includes(select('algorithm').value);
+function parameterControls() {
+  const mode = select('algorithm').value, forcedManual = ['exact', 'tas'].includes(mode);
+  select('parameter-mode').value = forcedManual ? 'manual' : approximateParameters;
+  select('parameter-mode').disabled = forcedManual;
+  const group = mode === 'tas' ? 'tas' : 'ordinary';
+  if (group !== budgetGroup) { manualBudgets[budgetGroup] = select('budget').value; select('budget').value = manualBudgets[group]; budgetGroup = group; }
+  select('budget').querySelector<HTMLOptionElement>('option[value="30000"]')!.disabled = mode !== 'tas';
+  const automatic = usesAuto();
+  el('auto-panel').hidden = !automatic;
+  for (const id of ['budget', 'horizon', 'nodes']) (el(id) as HTMLInputElement | HTMLSelectElement).disabled = automatic;
+  input('trajectories').disabled = automatic || mode !== 'rollout';
+  select('backend').disabled = mode !== 'rollout';
+  el('auto-status').textContent = automatic ? '每步根据空位、出块风险和候选差距调整参数；逐步学习本机计算速度。' : '手动参数生效。';
+}
 function resetTas() { tas = null; tasCursor = 0; tasPreview = null; showTas(); }
 function showTas() {
   el('tas-status').textContent = tas ? `${tas.note} · ${tas.nodes.toLocaleString()} 节点 · ${tas.elapsedMs.toFixed(1)} ms · 新增分 ${tas.frames.at(-1)!.score - tas.frames[0].score}` : '尚未规划。时间预算作用于整条路线；搜索步数限制路线长度。';
@@ -40,6 +59,7 @@ function notify(message: string, error = false) { el('notice').textContent = mes
 function clearAnalysis() {
   el('recommendation').textContent = '—'; el('analysis-meta').textContent = '点击「只分析」查看四方向比较。';
   el('choices').replaceChildren();
+  el('auto-status').textContent = usesAuto() ? '下次决策将重新评估当前局面。' : '手动参数生效。';
   for (const d of DIRECTIONS) { const tr = document.createElement('tr'); tr.innerHTML = `<td>${ARROWS[d]}</td><td>—</td><td>—</td>`; el('choices').append(tr); }
 }
 function cancel() {
@@ -88,7 +108,7 @@ function render(transition?: MoveResult, spawned?: number | null) {
   updateButtons();
 }
 function load(snapshot: Snapshot, past: Snapshot[] = []) {
-  cancel(); resetTas(); state = cloneSnapshot(snapshot); history = past.map(cloneSnapshot); replay = null;
+  cancel(); autoTuner.reset(); resetTas(); state = cloneSnapshot(snapshot); history = past.map(cloneSnapshot); replay = null;
   select('size').value = String(state.board.size); input('target').value = String(state.target);
   el('editor-section').hidden = true; clearAnalysis(); best = Math.max(best, state.score); store(); render();
 }
@@ -102,18 +122,19 @@ function fresh() {
   catch (e) { notify((e as Error).message, true); }
 }
 function options(): Options {
-  const horizon = Number(input('horizon').value), trajectories = Number(input('trajectories').value), interval = Number(input('interval').value);
-  const maxNodes = Number(input('nodes').value);
+  const automatic = usesAuto();
+  const horizon = automatic ? DEFAULT_OPTIONS.horizon : Number(input('horizon').value), trajectories = automatic ? DEFAULT_OPTIONS.trajectories : Number(input('trajectories').value), interval = Number(input('interval').value);
+  const maxNodes = automatic ? 1000000 : Number(input('nodes').value);
   if (!Number.isSafeInteger(maxNodes) || maxNodes < 1) throw new Error('节点预算必须为正的安全整数');
   if (!Number.isSafeInteger(horizon) || horizon < 1) throw new Error('搜索 / 模拟步数必须为正的安全整数');
   if (!Number.isInteger(trajectories) || trajectories < 1 || trajectories > 65536) throw new Error('每方向模拟数必须为 1–65536');
   if (!Number.isFinite(interval) || interval < 0 || interval > 5000) throw new Error('移动间隔必须为 0–5000 ms');
-  return { ...DEFAULT_OPTIONS, maxNodes, algorithm: select('algorithm').value as Options['algorithm'], objective: select('objective').value as Options['objective'], target: readTarget(), budgetMs: Number(select('budget').value), horizon, trajectories, seed: hashSeed('analysis-independent'), continueAfterTarget: input('continue').checked,
+  return { ...DEFAULT_OPTIONS, maxNodes, algorithm: select('algorithm').value as Options['algorithm'], objective: select('objective').value as Options['objective'], target: readTarget(), budgetMs: automatic ? 200 : Number(select('budget').value), horizon, trajectories, seed: hashSeed('analysis-independent'), continueAfterTarget: input('continue').checked,
     strong: { adaptive: input('strong-adaptive').checked, rootParallel: input('strong-parallel').checked, risk: input('strong-risk').checked, channels: input('strong-channels').checked, chanceCutoff: Number(input('strong-cutoff').value) } };
 }
 function canPlay() { return !terminal(state.board) && (input('continue').checked || !reached(state.board, state.target)); }
 function move(direction: Direction, manual = false) {
-  if (manual) { cancel(); replay = null; }
+  if (manual) { cancel(); autoTuner.reset(); replay = null; }
   resetTas();
   if (!canPlay()) { notify('已结束或已达到停止目标。勾选「达到目标后继续游玩」可以继续。'); render(); return; }
   const next = advance(state, direction);
@@ -154,13 +175,13 @@ async function cpu(board: Board, o: Options, id: number): Promise<SolveResult> {
   }
   return workerRequest('cpu', { board, options: o }, id);
 }
-async function compute(board: Board, o: Options, id: number): Promise<SolveResult> {
+async function compute(board: Board, o: Options, id: number, route?: 'cpu' | 'cuda', autoFallback?: () => Promise<SolveResult>): Promise<SolveResult> {
   const backend = select('backend').value;
   const threshold = device.autoThreshold;
-  const useCuda = o.algorithm === 'rollout' && (backend === 'cuda' || (backend === 'auto' && device.available && threshold && board.size === threshold.size && o.horizon >= threshold.minHorizon && o.trajectories >= threshold.minTrajectories));
+  const useCuda = o.algorithm === 'rollout' && (route === 'cuda' || (route === undefined && (backend === 'cuda' || (backend === 'auto' && device.available && threshold && board.size === threshold.size && o.horizon >= threshold.minHorizon && o.trajectories >= threshold.minTrajectories))));
   if (!useCuda) return cpu(board, o, id);
   const activeController = new AbortController(); controller = activeController;
-  const watchdog = setTimeout(() => activeController.abort(), o.budgetMs + 10000);
+  const watchdog = setTimeout(() => activeController.abort(), o.budgetMs + (autoFallback ? 100 : 10000));
   try {
     const response = await fetch('/api/solve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: activeController.signal, body: JSON.stringify({ board: matrix(board), ...o, requestId: String(id) }) });
     if (!response.ok) { const detail = await response.json().catch(() => ({})); throw new Error(typeof detail.detail === 'string' ? detail.detail : `HTTP ${response.status}`); }
@@ -168,15 +189,57 @@ async function compute(board: Board, o: Options, id: number): Promise<SolveResul
   } catch (e) {
     if (id !== version) throw e;
     notify(`CUDA 不可用：${(e as Error).message}。本次回退 CPU。`, true);
-    const result = await cpu(board, o, id); result.note += `；CUDA 失败后回退 CPU：${(e as Error).message}`; return result;
+    const result = await (autoFallback ? autoFallback() : cpu(board, o, id)); result.note += `；CUDA 失败后回退 CPU：${(e as Error).message}`; return result;
   } finally { clearTimeout(watchdog); if (controller === activeController) controller = null; }
+}
+async function computeAutomatic(board: Board, base: Options, id: number): Promise<SolveResult> {
+  const began = performance.now();
+  const probe = await workerRequest<AutoProbe>('cpu', { board, options: base, autoProbe: true }, id);
+  if (id !== version) throw new Error('已取消');
+  const probeMs = performance.now() - began;
+  const settings: AutoSettings = { style: select('auto-style').value as AutoSettings['style'], maxBudgetMs: Number(select('auto-limit').value) };
+  let plan = autoTuner.plan(probe, base, settings, 'cpu', probeMs);
+  if (base.algorithm === 'rollout') {
+    const backend = select('backend').value, threshold = device.autoThreshold;
+    if (backend === 'cuda') plan = autoTuner.plan(probe, base, settings, 'cuda', probeMs);
+    else if (backend === 'auto' && device.available && threshold && board.size === threshold.size) {
+      const cuda = autoTuner.plan(probe, base, settings, 'cuda', probeMs);
+      // Forecast with the same backend that will actually receive this workload.
+      if (cuda.options.horizon >= threshold.minHorizon && cuda.options.trajectories >= threshold.minTrajectories) plan = cuda;
+    }
+  }
+  const remaining = Math.max(1, plan.stats.budgetMs - (performance.now() - began));
+  plan.options.budgetMs = remaining; plan.stats.searchBudgetMs = remaining;
+  el('auto-status').textContent = autoSummary(plan.stats, base.algorithm);
+  const totalBudget = plan.stats.budgetMs, deadline = began + totalBudget;
+  let workBegan = performance.now();
+  const result = await compute(board, plan.options, id, plan.stats.estimatedBackend, async () => {
+    if (id !== version) throw new Error('已取消');
+    const spent = performance.now() - began;
+    // Replan with CPU throughput and the original total allowance, counting the failed attempt.
+    plan = autoTuner.plan(probe, base, settings, 'cpu', spent, totalBudget);
+    plan.options.budgetMs = Math.max(1, Math.min(plan.options.budgetMs, deadline - performance.now()));
+    plan.stats.searchBudgetMs = plan.options.budgetMs;
+    plan.stats.probeMs = probeMs; plan.stats.fallbackMs = Math.max(0, spent - probeMs);
+    plan.stats.reason += '；CUDA失败，按剩余预算重新规划CPU';
+    el('auto-status').textContent = autoSummary(plan.stats, base.algorithm);
+    workBegan = performance.now();
+    return cpu(board, plan.options, id);
+  });
+  const searchMs = performance.now() - workBegan;
+  if (id !== version) throw new Error('已取消');
+  autoTuner.observe(base, probe, plan.stats, result, searchMs);
+  result.autoStats = plan.stats;
+  result.note += `；${autoSummary(plan.stats, base.algorithm)}`;
+  return result;
 }
 function showResult(result: SolveResult) {
   el('backend-badge').textContent = result.backend.toUpperCase(); el('recommendation').textContent = result.direction === null ? '—' : ARROWS[result.direction];
   el('analysis-meta').textContent = `${result.backend.toUpperCase()} · ${result.elapsedMs.toFixed(1)} ms · ${result.algorithm === 'rollout' ? `模拟 ${result.depth} 步` : `完成深度 ${result.depth}`} · ${result.nodes.toLocaleString()} ${result.algorithm === 'rollout' ? '模拟步预算' : '节点'}${result.complete ? ' · 已完成' : ` · ${result.strongStats?.stopReason ?? '触及预算'}`}`;
   el('analysis-note').textContent = result.note + (result.workers ? `；CPU ${result.workers} 路并行` : '');
-  const probability = select('objective').value === 'target' && ['exact', 'rollout'].includes(result.algorithm);
-  el('value-heading').textContent = probability ? '达标概率' : ['expectimax', 'strong'].includes(result.algorithm) ? '启发式估值' : '期望新增分';
+  if (result.autoStats) el('auto-status').textContent = autoSummary(result.autoStats, result.algorithm) + (result.algorithm === 'rollout' ? `；实际每方向 ${result.choices[0]?.samples ?? 0} 条` : `；实际完成深度 ${result.depth}`);
+  const probability = (result.autoStats?.objective ?? select('objective').value) === 'target' && ['exact', 'rollout'].includes(result.algorithm);
+  el('value-heading').textContent = probability ? `达标概率${result.autoStats ? ` (${result.autoStats.effectiveTarget})` : ''}` : ['expectimax', 'strong'].includes(result.algorithm) ? '启发式估值' : '期望新增分';
   el('stats-heading').textContent = result.algorithm === 'strong' ? '下一次出块即死风险' : '样本 / 95% 区间';
   el('choices').replaceChildren();
   for (const d of DIRECTIONS) {
@@ -199,7 +262,8 @@ async function runOnce(play: boolean) {
   try {
     const o = options(); notify('正在计算… 可随时暂停。');
     const started = performance.now();
-    const result = await compute({ ...state.board, cells: [...state.board.cells] }, o, owner);
+    const board = { ...state.board, cells: [...state.board.cells] };
+    const result = await (usesAuto() ? computeAutomatic(board, o, owner) : compute(board, o, owner));
     result.elapsedMs = performance.now() - started;
     if (owner !== version) return;
     if (play && result.direction !== null) { move(result.direction); owner = version; }
@@ -252,7 +316,7 @@ async function detect() {
   notify(device.available ? `${device.name} 可用。CUDA 用于模拟；自动选择按已校准阈值工作。` : device.reason || 'CUDA 不可用');
 }
 function editor() {
-  cancel(); tasPreview = null; replay = null; showTas(); const n = Number(select('size').value), b = state.board.size === n ? matrix(state.board) : Array.from({ length: n }, () => Array(n).fill(0));
+  cancel(); autoTuner.reset(); tasPreview = null; replay = null; showTas(); const n = Number(select('size').value), b = state.board.size === n ? matrix(state.board) : Array.from({ length: n }, () => Array(n).fill(0));
   el('editor-section').hidden = false; const root = el('editor'); root.style.setProperty('--size', String(n)); root.replaceChildren();
   b.flat().forEach((v, i) => { const field = document.createElement('input'); field.type = 'number'; field.min = '0'; field.value = String(v); field.setAttribute('aria-label', `编辑第${Math.floor(i / n) + 1}行第${i % n + 1}列`); root.append(field); });
   render(); notify('编辑后点击「应用棋盘」。尺寸变更在应用或新游戏时生效。');
@@ -270,7 +334,7 @@ el('start').onclick = () => { if (busy) cancel(); if (isTas() && tas && sameSnap
 el('pause').onclick = () => { cancel(); notify('已暂停。'); };
 el('step').onclick = () => { cancel(); if (isTas() && tas && sameSnapshot(state, tas.frames[tasCursor])) executeRoute(false); else void runOnce(true); };
 el('analyze').onclick = () => { cancel(); void runOnce(false); };
-el('undo').onclick = () => { cancel(); resetTas(); replay = null; const prior = history.pop(); if (prior) { state = prior; clearAnalysis(); store(); render(); notify('已撤销，随机状态同步恢复。'); } };
+el('undo').onclick = () => { cancel(); autoTuner.reset(); resetTas(); replay = null; const prior = history.pop(); if (prior) { state = prior; clearAnalysis(); store(); render(); notify('已撤销，随机状态同步恢复。'); } };
 el('detect').onclick = () => void detect(); el('edit').onclick = editor; select('size').onchange = editor;
 el('cancel-editor').onclick = () => { el('editor-section').hidden = true; select('size').value = String(state.board.size); };
 el('clear-editor').onclick = () => el('editor').querySelectorAll('input').forEach(field => field.value = '0');
@@ -286,22 +350,22 @@ el('export').onclick = () => {
 input('file').onchange = async () => { const file = input('file').files?.[0]; if (file) { if (file.size > 20 * 1024 * 1024) notify('存档文件不能超过 20 MB', true); else importText(await file.text()); } input('file').value = ''; };
 input('timeline').oninput = () => { cancel(); tasPreview = null; replay = Number(input('timeline').value); clearAnalysis(); showTas(); render(); };
 el('live').onclick = () => { cancel(); tasPreview = null; replay = null; showTas(); render(); };
-for (const id of ['algorithm', 'backend', 'objective', 'budget', 'horizon', 'nodes', 'trajectories', 'interval', 'continue', 'tas-search', 'tas-width', 'strong-adaptive', 'strong-parallel', 'strong-risk', 'strong-channels', 'strong-cutoff']) el(id).onchange = () => {
-  cancel(); if (!['interval', 'continue'].includes(id)) resetTas(); clearAnalysis(); const mode = select('algorithm').value;
+for (const id of ['algorithm', 'backend', 'objective', 'budget', 'horizon', 'nodes', 'trajectories', 'interval', 'continue', 'tas-search', 'tas-width', 'strong-adaptive', 'strong-parallel', 'strong-risk', 'strong-channels', 'strong-cutoff', 'parameter-mode', 'auto-style', 'auto-limit']) el(id).onchange = () => {
+  if (id === 'parameter-mode') approximateParameters = select('parameter-mode').value;
+  cancel(); if (id !== 'interval') autoTuner.reset(); if (!['interval', 'continue'].includes(id)) resetTas(); clearAnalysis(); const mode = select('algorithm').value;
   el('tas-panel').hidden = mode !== 'tas';
   el('strong-panel').hidden = mode !== 'strong';
-  if (mode !== 'tas' && Number(select('budget').value) > 5000) select('budget').value = '5000';
   el('mode-help').textContent = mode === 'strong' ? '阶段与风险评分、自适应加深。步数是搜索上限；候选均按相同完整深度比较。勾选继续游玩时，达标后推进下一目标。' : mode === 'tas' ? '混合搜索先生成候选，再尝试证明；束搜索适合长路线，完整回溯用于最优性证明。固定种子读取未来 RNG，理想模式控制出块。' : mode === 'exact' ? '完整枚举 H 步内随机分支。预算不足时不提供最优结论。推荐小棋盘和浅层分析。' : mode === 'rollout' ? '增强贪心后续策略的模拟估计；CUDA 适合较大批量。无成功样本时按局面评分择优。时间预算在完整批次间检查。' : '限时搜索 + 多方向结构评分。建议动作属于近似决策。';
-  select('backend').disabled = mode !== 'rollout'; input('trajectories').disabled = mode !== 'rollout';
+  parameterControls();
   render();
 };
-input('target').onchange = () => { cancel(); resetTas(); try { state.target = readTarget(); history = []; replay = null; clearAnalysis(); store(); render(); } catch (e) { input('target').value = String(state.target); render(); notify((e as Error).message, true); } };
+input('target').onchange = () => { cancel(); autoTuner.reset(); resetTas(); try { state.target = readTarget(); history = []; replay = null; clearAnalysis(); store(); render(); } catch (e) { input('target').value = String(state.target); render(); notify((e as Error).message, true); } };
 select('tas-mode').onchange = () => { cancel(); resetTas(); render(); el('tas-rules').textContent = select('tas-mode').value === 'ideal' ? '理想条件：每步主动选择空位及 2 / 4，不按 90% / 10% 抽样，不消耗游戏 RNG。普通游玩恢复随机出块。' : '固定种子：提前计算当前存档的 RNG，回溯动作；相同起点和动作可复现路线。'; };
 el('tas-plan').onclick = () => { cancel(); void planRoute(); };
 el('tas-run').onclick = () => { cancel(); executeRoute(true); };
 el('tas-step').onclick = () => { cancel(); executeRoute(false); };
 el('tas-restore').onclick = () => {
-  if (!tas) return; cancel(); state = cloneSnapshot(tas.frames[0]); history = []; replay = null; tasPreview = null; tasCursor = 0; showTas(); clearAnalysis(); store(); render(); notify('已恢复 TAS 起点，包括随机状态。');
+  if (!tas) return; cancel(); autoTuner.reset(); state = cloneSnapshot(tas.frames[0]); history = []; replay = null; tasPreview = null; tasCursor = 0; showTas(); clearAnalysis(); store(); render(); notify('已恢复 TAS 起点，包括随机状态。');
 };
 input('tas-timeline').oninput = () => { if (!tas) return; cancel(); replay = null; tasPreview = Number(input('tas-timeline').value); showTas(); render(); };
 el('tas-live').onclick = () => { cancel(); tasPreview = null; replay = null; showTas(); render(); };
@@ -315,7 +379,7 @@ el('tas-import').onclick = () => {
     const result = importTas(el<HTMLTextAreaElement>('tas-json').value); load(result.frames[0]); tas = result;
     select('algorithm').value = 'tas'; select('tas-mode').value = result.options.mode; select('objective').value = result.options.objective; input('horizon').value = String(result.options.horizon);
     select('tas-search').value = result.options.strategy ?? 'exact'; input('tas-width').value = String(result.options.beamWidth ?? 128); input('nodes').value = String(result.options.maxNodes);
-    el('tas-panel').hidden = false; el('strong-panel').hidden = true; select('backend').disabled = true; input('trajectories').disabled = true;
+    el('tas-panel').hidden = false; el('strong-panel').hidden = true; parameterControls();
     el('tas-rules').textContent = result.options.mode === 'ideal' ? '已加载理想出块路线：出块受控，不消耗游戏 RNG。' : '已加载固定种子路线：提前计算出块。';
     showTas(); render(); notify(result.note);
   } catch (e) { notify((e as Error).message, true); }
@@ -329,4 +393,4 @@ let touch: [number, number] | null = null;
 el('board').onpointerdown = event => { touch = [event.clientX, event.clientY]; el('board').setPointerCapture(event.pointerId); };
 el('board').onpointerup = event => { if (!touch) return; const dx = event.clientX - touch[0], dy = event.clientY - touch[1]; touch = null; if (Math.max(Math.abs(dx), Math.abs(dy)) > 24) move(Math.abs(dx) > Math.abs(dy) ? dx > 0 ? 1 : 3 : dy > 0 ? 2 : 0, true); };
 try { const saved = readStorage(STORAGE); if (saved) { const parsed = decode(saved); load(parsed.snapshot); } else fresh(); } catch { fresh(); }
-select('backend').disabled = true; input('trajectories').disabled = true; void detect();
+parameterControls(); void detect();

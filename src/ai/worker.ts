@@ -1,9 +1,11 @@
 import { rolloutSlice, solve } from './solver';
 import { strongFallback, strongRoot } from './strong';
+import { probeAuto } from './auto-params';
 self.onmessage = (event) => {
-  const { id, board, options, batch, strong } = event.data;
+  const { id, board, options, batch, strong, autoProbe } = event.data;
   try {
-    if (strong) {
+    if (autoProbe) self.postMessage({ id, result: probeAuto(board, options) });
+    else if (strong) {
       const result = strong.prepare ? strongFallback(board, options) : strongRoot(board, options, strong.direction, strong.depth, performance.now() + Math.max(0, strong.deadline - Date.now()));
       self.postMessage({ id, result });
     } else if (batch) {

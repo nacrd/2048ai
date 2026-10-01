@@ -1,12 +1,13 @@
 import { applyMove, DIRECTIONS, emptyCells, hashSeed, legalMoves, reached, RNG, spawnTile, trajectorySeed, type Board, type Direction } from '../core/engine';
 import { directionValue, evaluate } from './evaluation';
 import { solveStrong, type StrongStats, type StrongTuning } from './strong';
+import type { AutoStats } from './auto-params';
 export { evaluate } from './evaluation';
 export type Algorithm = 'expectimax' | 'rollout' | 'exact' | 'strong';
 export type Objective = 'score' | 'target';
 export interface Options { algorithm: Algorithm; objective: Objective; target: number; budgetMs: number; horizon: number; trajectories: number; seed: number; maxNodes?: number; strong?: StrongTuning; continueAfterTarget?: boolean }
 export interface Choice { direction: Direction; value: number; tieBreak?: number; samples?: number; confidence?: [number, number] }
-export interface SolveResult { direction: Direction | null; choices: Choice[]; algorithm: Algorithm; backend: 'cpu' | 'cuda'; complete: boolean; depth: number; nodes: number; elapsedMs: number; note: string; workers?: number; valueKind?: 'heuristic'; policyVersion?: string; strongStats?: StrongStats }
+export interface SolveResult { direction: Direction | null; choices: Choice[]; algorithm: Algorithm; backend: 'cpu' | 'cuda'; complete: boolean; depth: number; nodes: number; elapsedMs: number; note: string; workers?: number; valueKind?: 'heuristic'; policyVersion?: string; strongStats?: StrongStats; autoStats?: AutoStats }
 export interface RolloutSlice { directions: Direction[]; count: number; values: Float64Array; tieBreaks?: number[] }
 export function rolloutSlice(board: Board, options: Options, offset: number, count: number, includeTies = false): RolloutSlice {
   const directions = legalMoves(board), values = new Float64Array(directions.length * count);

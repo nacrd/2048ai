@@ -6,6 +6,8 @@
 
 浏览器 CPU：Worker 接受 `{id, board:{size,cells}, options}`，返回 `{id,result}` 或 `{id,error}`。完成后保留闲置 Worker，暂停或状态变更销毁活动 Worker，旧请求结果通过版本号和实例身份拒绝。CUDA 服务只负责模拟，复用批次缓冲区，通过 HTTP 提交，按批次查询断连并取消；单个已启动 kernel 运行至该批结束。4×4 非动画规则使用五位指数行查表；指数≥31或其他尺寸走通用实现，避免 65536/131072 截断。
 
+页面自动参数适用于 expectimax/strong/rollout，消息可增加 `autoProbe:true` 进行棋盘风险探测。控制器在探测后生成普通 options，向CPU或CUDA提交；探测时间计入请求软预算。响应由控制器附加 `autoStats`（auto-v1、偏好、复杂度、实际目标类型与目标、请求H/样本/节点、总/剩余预算、探测耗时、计划后端及选择原因）；显示H/目标以该次参数为准。反馈根据实际后端和成功结果更新，版本失效的任务不更新；不改变服务求解协议。exact/TAS及CLI固定参数评测不启用自动控制。[完整说明](AUTO_PARAMETERS.md)。
+
 浏览器 Rollout 大任务使用最多4路轨迹 Worker，任务增加 `batch:{offset,count,includeTies}`；返回全局连续编号轨迹的方向优先 Float64Array，并以 transferable 交回缓冲区。主线程按轨迹编号顺序累加，每方向相同样本数；共享整个请求软预算，完成一轮全部批次后检查。结果可含 workers 并行路数。取消终止所有活动实例并拒绝待处理批次，闲置实例继续复用。Expectimax/exact/TAS 仍使用单 Worker。
 
 `GET /api/health` 返回 available、设备名、显存、不可用原因和本机校准配置。`POST /api/solve` 请求示例：

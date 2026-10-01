@@ -19,6 +19,7 @@
 <div class="field-grid">
 <label>算法<select id="algorithm"><option value="expectimax">Expectimax · 实时搜索</option><option value="strong">强力 · 阶段与风险搜索</option><option value="rollout">Rollout · 批量模拟</option><option value="exact">有限步精确搜索</option><option value="tas">TAS · 离线路线规划</option></select></label>
 <label>计算后端<select id="backend"><option value="auto">自动选择</option><option value="cpu">CPU</option><option value="cuda">CUDA（模拟模式）</option></select></label>
+<label>参数控制<select id="parameter-mode"><option value="auto" selected>自动 · 根据局面调整</option><option value="manual">手动参数</option></select></label>
 <label>求解目标<select id="objective"><option value="score">提高得分</option><option value="target">达到目标块</option></select></label>
 <label>目标块<input id="target" type="number" min="2" value="2048" step="2048"></label>
 <label>计算预算<select id="budget"><option value="50">50 ms · 快速</option><option value="200" selected>200 ms · 平衡</option><option value="1000">1000 ms · 深入</option><option value="5000">5000 ms · 分析</option><option value="30000">30 s · TAS 规划</option></select></label>
@@ -27,6 +28,10 @@
 <label>每方向模拟数<input id="trajectories" type="number" min="1" max="65536" value="128"></label>
 <label>移动间隔 (ms)<input id="interval" type="number" min="0" max="5000" value="180"></label>
 </div>
+<div id="auto-panel"><div class="field-grid">
+<label>自动偏好<select id="auto-style"><option value="fast">速度优先</option><option value="balanced" selected>均衡</option><option value="steady">稳健 · 困难局多算</option></select></label>
+<label>单步时间上限（软）<select id="auto-limit"><option value="200">200 ms</option><option value="500">500 ms</option><option value="1000" selected>1000 ms</option><option value="3000">3000 ms</option><option value="5000">5000 ms</option></select></label>
+</div><p id="auto-status" class="hint" role="status">每步根据空位、出块风险和候选差距调整参数；逐步学习本机计算速度。</p></div>
 <label class="check"><input id="continue" type="checkbox" checked>达到目标后继续游玩</label>
 <p id="mode-help" class="hint">限时搜索 + 启发式评分。建议动作属于近似决策。</p></section>
 <section id="strong-panel" class="panel" hidden><h2>强力搜索</h2>
