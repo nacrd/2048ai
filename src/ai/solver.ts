@@ -5,7 +5,13 @@ export type Algorithm = 'expectimax' | 'rollout' | 'exact';
 export type Objective = 'score' | 'target';
 export interface Options { algorithm: Algorithm; objective: Objective; target: number; budgetMs: number; horizon: number; trajectories: number; seed: number; maxNodes?: number }
 export interface Choice { direction: Direction; value: number; tieBreak?: number; samples?: number; confidence?: [number, number] }
-export interface SolveResult { direction: Direction | null; choices: Choice[]; algorithm: Algorithm; backend: 'cpu' | 'cuda'; complete: boolean; depth: number; nodes: number; elapsedMs: number; note: string }
+export interface SolveResult { direction: Direction | null; choices: Choice[]; algorithm: Algorithm; backend: 'cpu' | 'cuda'; complete: boolean; depth: number; nodes: number; elapsedMs: number; note: string; workers?: number }
+export interface RolloutSlice { directions: Direction[]; count: number; values: Float64Array; tieBreaks?: number[] }
+export function rolloutSlice(board: Board, options: Options, offset: number, count: number, includeTies = false): RolloutSlice {
+  const directions = legalMoves(board), values = new Float64Array(directions.length * count);
+  for (let i = 0; i < count; i++) for (let d = 0; d < directions.length; d++) values[d * count + i] = rolloutOne(board, directions[d], offset + i, options);
+  return { directions, count, values, ...(includeTies ? { tieBreaks: directions.map(d => directionValue(board, d)) } : {}) };
+}
 
 export function greedy(board: Board): Direction | null {
   let best: Direction | null = null, value = -Infinity;
@@ -32,7 +38,8 @@ export function rolloutOne(board: Board, direction: Direction, id: number, o: Op
     const m = applyMove(b, action);
     if (!m.moved) break;
     score += m.scoreDelta; b = spawnTile(m.board, rng).board;
-    action = greedy(b);
+    if (o.objective === 'target' && reached(b, o.target)) return 1;
+    if (step + 1 < o.horizon) action = greedy(b);
   }
   return o.objective === 'target' ? Number(reached(b, o.target)) : score;
 }

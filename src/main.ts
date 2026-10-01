@@ -2,6 +2,7 @@ import './style.css';
 import { ARROWS, DIRECTIONS, fromMatrix, hashSeed, matrix, maxTile, newBoard, reached, RNG, type Board, type Direction, type MoveResult } from './core/engine';
 import { advance, cloneSnapshot, decode, encode, terminal, type Snapshot } from './core/session';
 import { DEFAULT_OPTIONS, type Options, type SolveResult } from './ai/solver';
+import { RolloutPool } from './ai/rollout-pool';
 import { exportTas, importTas, sameSnapshot, tasAdvance, type TasOptions, type TasPlan } from './ai/tas';
 
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -14,6 +15,7 @@ let history: Snapshot[] = [], replay: number | null = null;
 let state: Snapshot, version = 0, running = false, busy = false, timer: ReturnType<typeof setTimeout> | undefined;
 let worker: Worker | null = null, controller: AbortController | null = null;
 const idleWorkers: Partial<Record<'cpu' | 'tas', Worker>> = {};
+const rolloutPool = new RolloutPool();
 let pendingReject: ((error: Error) => void) | null = null;
 interface Device { available: boolean; name?: string; reason?: string; autoThreshold?: { size: number; minHorizon: number; minTrajectories: number } | null }
 let device: Device = { available: false };
@@ -40,7 +42,7 @@ function clearAnalysis() {
 }
 function cancel() {
   running = false; busy = false; version++; clearTimeout(timer); document.body.dataset.running = 'false';
-  worker?.terminate(); worker = null; controller?.abort(); controller = null;
+  worker?.terminate(); worker = null; rolloutPool.cancel(); controller?.abort(); controller = null;
   pendingReject?.(new Error('已取消')); pendingReject = null; updateButtons();
 }
 function updateButtons() {
@@ -136,7 +138,14 @@ function workerRequest<T>(kind: 'cpu' | 'tas', payload: object, id: number, prog
     activeWorker.postMessage({ id, ...payload });
   });
 }
-function cpu(board: Board, o: Options, id: number): Promise<SolveResult> { return workerRequest('cpu', { board, options: o }, id); }
+async function cpu(board: Board, o: Options, id: number): Promise<SolveResult> {
+  if (o.algorithm === 'rollout' && rolloutPool.size > 1 && o.trajectories >= 128 && o.budgetMs >= 200) {
+    const result = await rolloutPool.solve(board, o);
+    if (id !== version) throw new Error('已取消');
+    return result;
+  }
+  return workerRequest('cpu', { board, options: o }, id);
+}
 async function compute(board: Board, o: Options, id: number): Promise<SolveResult> {
   const backend = select('backend').value;
   const threshold = device.autoThreshold;
@@ -157,7 +166,7 @@ async function compute(board: Board, o: Options, id: number): Promise<SolveResul
 function showResult(result: SolveResult) {
   el('backend-badge').textContent = result.backend.toUpperCase(); el('recommendation').textContent = result.direction === null ? '—' : ARROWS[result.direction];
   el('analysis-meta').textContent = `${result.backend.toUpperCase()} · ${result.elapsedMs.toFixed(1)} ms · ${result.algorithm === 'rollout' ? `模拟 ${result.depth} 步` : `完成深度 ${result.depth}`} · ${result.nodes.toLocaleString()} ${result.algorithm === 'rollout' ? '模拟步预算' : '节点'}${result.complete ? ' · 已完成' : ' · 触及预算'}`;
-  el('analysis-note').textContent = result.note;
+  el('analysis-note').textContent = result.note + (result.workers ? `；CPU ${result.workers} 路并行` : '');
   const probability = select('objective').value === 'target' && result.algorithm !== 'expectimax';
   el('value-heading').textContent = probability ? '达标概率' : result.algorithm === 'expectimax' ? '启发式估值' : '期望新增分';
   el('choices').replaceChildren();

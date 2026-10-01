@@ -73,6 +73,12 @@ TAS 当前使用浏览器 CPU Worker，CUDA 继续用于 Rollout 批量模拟。
 
 目标 rollout 的成功率相同时使用下一步出块后的期望局面评分 `tieBreak`；无成功样本仍显示 0% 和真实置信区间。Worker 完成后保留复用，取消只销毁正在工作的实例；CUDA 批次复用输入、输出缓冲区及计时事件。
 
+底层推理优化：浏览器 Rollout 在预算≥200ms、每方向≥128条轨迹时，按硬件并发数使用最多4个 Worker；小任务保留单 Worker。轨迹按全局编号拆分，结果仍按编号顺序累加；暂停终止所有活动 Worker。每个4×4 Worker查表约16MiB，首次启动和初始化也计入软预算。
+
+本机 CPU Rollout 用 Numba 多核并行，单轨迹复用移动/评分缓冲区并释放 GIL；可在启动服务前设置 `NUMBA_NUM_THREADS` 限制线程数。CUDA 为2×2–6×6分别编译，减少动态索引和局部数组大小；目标达标与最后一步跳过多余贪心计算。CPU/CUDA 使用独立调度队列，批次根据设备并行度、上一批耗时及剩余预算自适应。常规安全整数得分及目标概率在 GPU 汇总，仅回传每个方向的总值；超出精度安全界限时回退原来的主机汇总。[Numba 线程配置](https://numba.readthedocs.io/en/stable/user/threading-layer.html) · [CuPy RawModule](https://docs.cupy.dev/en/stable/reference/generated/cupy.RawModule.html)
+
+GPU 初始化只编译内核，不自动运行游玩验证。健康接口显示CPU线程数和GPU SM数；求解响应新增排队耗时、批次数和批次大小，便于自行评测。TAS 缓存节点的最大块/达标状态，减少排序中的重复扫描；仍使用单 Worker。新版吞吐和设备利用率需要重新实测。
+
 可在终端离线从存档分段规划并续玩，无需动画等待：
 
 ```powershell
@@ -80,7 +86,9 @@ npm run continue -- --save .\save.json --mode fixed --target 131072 --seconds 60
 # 理想出块对照使用 --mode ideal，并使用不同 --out 目录
 ```
 
-fixed 保留原 RNG，ideal 只按已记录的合法 2/4 出块。每步核对完整快照，约每 10 秒保存 `continued-save.json`、`route.json`、`progress.json`；原文件不覆盖，输出冲突会拒绝。`--window` 是每轮规划长度，`--commit` 是本轮实际执行的前缀，结束时保留检查点。Ctrl+C 会在当前计算窗口结束后保存。需要从检查点再次续玩时使用新的输出目录。
+fixed 保留原 RNG，ideal 只按已记录的合法 2/4 出块。每步核对完整快照，约每 10 秒保存 `continued-save.json`、`route.json`、`progress.json`；原文件不覆盖，输出冲突会拒绝。`--window` 是每轮规划长度，`--commit` 是本轮实际执行的前缀，结束时保留检查点。直接运行脚本收到 SIGINT 时会在当前窗口后保存；通过 npm 或终端强制结束进程时，以最后一次检查点为准。需要从检查点再次续玩时使用新的输出目录。
+
+固定种子增加质量障碍证明：合并保持总质量，每次有效移动的出块数值仅取决于 RNG。若未来总质量的二进制 1 位数等于棋盘格数，则所有格必须为互不相同的二次幂，满盘后无法继续。TAS 显示这个全局不可达证明；离线续玩将有效目标调整为障碍前的最大块上界，在 `progress.json` 同时记录 requestedTarget/target，并保存 `fixed-limit.json`。检测超时仅表示未得到证明，上界可达性仍需实际路线确认。
 
 标准 4×4 在有利出块条件下的最大块为 131072，[理论论文](https://arxiv.org/abs/1804.07393)。这不保证任意自定义存档或固定 RNG 可达。续玩报告只记录实际已达最大块，不把局部束搜索失败当作全局不可达证明，也不把达到最大块当作最短路线证明。
 

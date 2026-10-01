@@ -1,5 +1,6 @@
 from pathlib import Path
 import numpy as np
+from .policy import cuda_paths
 
 
 class CudaEngine:
@@ -10,16 +11,20 @@ class CudaEngine:
         self.name = properties['name'].decode()
         self.memory = properties['totalGlobalMem']
         self.capability = (properties['major'], properties['minor'])
-        code = Path(__file__).with_name('cuda').joinpath('rollout.cu').read_text(encoding='utf-8')
-        self.kernel = cp.RawKernel(code, 'rollout', options=('--std=c++17',))
-        self.move_kernel = cp.RawKernel(code, 'moves', options=('--std=c++17',))
+        self.multiprocessors = properties['multiProcessorCount']
+        self.block_size = 128
+        code = cuda_paths() + Path(__file__).with_name('cuda').joinpath('rollout.cu').read_text(encoding='utf-8')
+        self.module = cp.RawModule(code=code, options=('--std=c++17',))
+        # Compile all size-specialized paths without launching a gameplay workload.
+        self.module.compile()
+        self.kernels = {n: self.module.get_function(f'rollout{n}') for n in range(2, 7)}
+        self.move_kernel = self.module.get_function('moves')
         self._input_key = None
         self._outputs = {}
+        self._sums = {}
         self._begin, self._end = cp.cuda.Event(), cp.cuda.Event()
-        # Compile and launch an actual simulation, not just a device query.
-        self.batch(np.array([1, 1, 0, 0], dtype=np.uint8), 2, np.array([3], dtype=np.int32), 0, 1, 123, 2, 0, 11)
 
-    def batch(self, board, n, directions, offset, count, seed, horizon, objective, target):
+    def _launch(self, board, n, directions, offset, count, seed, horizon, objective, target):
         cp = self.cp
         key = (n, board.tobytes(), directions.tobytes())
         if key != self._input_key:
@@ -36,10 +41,33 @@ class CudaEngine:
             self._outputs[shape] = result
         begin, end = self._begin, self._end
         begin.record()
-        self.kernel(((result.size + 127) // 128,), (128,), (b, np.int32(n), dirs, np.int32(len(directions)), np.int32(offset), np.int32(count), np.uint32(seed), np.uint64(horizon), np.int32(objective), np.int32(target), result))
-        end.record(); end.synchronize()
-        self.last_kernel_ms = cp.cuda.get_elapsed_time(begin, end)
-        return cp.asnumpy(result)
+        self.kernels[n](((result.size + self.block_size - 1) // self.block_size,), (self.block_size,), (b, np.int32(n), dirs, np.int32(len(directions)), np.int32(offset), np.int32(count), np.uint32(seed), np.uint64(horizon), np.int32(objective), np.int32(target), result))
+        end.record()
+        return result
+
+    def _read(self, result):
+        # A blocking copy on the same stream already waits for the recorded event.
+        host = self.cp.asnumpy(result)
+        self.last_kernel_ms = self.cp.cuda.get_elapsed_time(self._begin, self._end)
+        return host
+
+    def batch(self, *args):
+        return self._read(self._launch(*args))
+
+    def batch_sums(self, board, n, directions, offset, count, seed, horizon, objective, target):
+        mass = sum(2 ** int(e) if e else 0 for e in board)
+        # Integer rewards aggregate exactly in any order only within the safe range.
+        # Preserve the original host sum for exceptional high-mass/long-horizon inputs.
+        safe = objective or (offset + count) * horizon * (mass + 4 * horizon) <= 2 ** 53
+        if not safe:
+            return self.batch(board, n, directions, offset, count, seed, horizon, objective, target).sum(axis=1)
+        values = self._launch(board, n, directions, offset, count, seed, horizon, objective, target)
+        sums = self._sums.get(len(directions))
+        if sums is None:
+            sums = self.cp.empty(len(directions), dtype=self.cp.float64)
+            self._sums[len(directions)] = sums
+        self.cp.sum(values, axis=1, out=sums)
+        return self._read(sums)
 
     def moves(self, boards, n):
         cp = self.cp

@@ -47,9 +47,12 @@ export function evaluate(board: Board): number {
 export function directionValue(board: Board, direction: Direction): number {
   const moved = applyMove(board, direction), empty = emptyCells(moved.board);
   let value = 0;
-  for (const index of empty) for (const [exponent, probability] of [[1, 0.9], [2, 0.1]]) {
-    const cells = [...moved.board.cells]; cells[index] = exponent;
-    value += evaluate({ size: board.size, cells }) * probability / empty.length;
+  for (const index of empty) {
+    for (const [exponent, probability] of [[1, 0.9], [2, 0.1]]) {
+      moved.board.cells[index] = exponent;
+      value += evaluate(moved.board) * probability / empty.length;
+    }
+    moved.board.cells[index] = 0;
   }
   return (empty.length ? value : evaluate(moved.board)) + Math.log2(moved.scoreDelta + 1) * 12;
 }

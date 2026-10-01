@@ -1,12 +1,13 @@
 import { applyMove, DIRECTIONS, emptyCells, maxTile, reached, RNG, type Direction } from '../core/engine';
 import { advance, cloneSnapshot, decode, encode, type Snapshot } from '../core/session';
 import { evaluate } from './solver';
+import { fixedLimit } from './limits';
 
 export type TasMode = 'fixed' | 'ideal';
 export interface TasOptions { mode: TasMode; objective: 'score' | 'target'; target: number; horizon: number; budgetMs: number; maxNodes: number; strategy?: 'exact' | 'beam' | 'hybrid'; beamWidth?: number }
 export interface TasAction { direction: Direction; spawn: { index: number; value: 2 | 4 } | null }
 export interface TasPlan { options: TasOptions; frames: Snapshot[]; actions: TasAction[]; complete: boolean; provenDepth: number; nodes: number; elapsedMs: number; note: string }
-interface Node { snapshot: Snapshot; parent: Node | null; action: TasAction | null; depth: number; rank: number }
+interface Node { snapshot: Snapshot; parent: Node | null; action: TasAction | null; depth: number; rank: number; maximum: number; hit: boolean }
 class Limit extends Error {}
 
 export function sameSnapshot(a: Snapshot, b: Snapshot): boolean {
@@ -30,24 +31,27 @@ export function planTas(start: Snapshot, options: TasOptions, progress?: (value:
   const o = { ...options }; validateOptions(o);
   if (start.target !== o.target) throw new Error('TAS 目标与起点不一致');
   const began = performance.now(); let nodes = 0, complete = false, provenDepth = 0;
-  const root: Node = { snapshot: cloneSnapshot(start), parent: null, action: null, depth: 0, rank: evaluate(start.board) };
+  const obstruction = o.mode === 'fixed' && o.objective === 'target' ? fixedLimit(start, o.target, Math.min(100, o.budgetMs * 0.1)) : null;
+  const maximum = maxTile(start.board);
+  const root: Node = { snapshot: cloneSnapshot(start), parent: null, action: null, depth: 0, rank: evaluate(start.board), maximum, hit: maximum >= o.target };
   const strategy = o.strategy ?? 'exact', width = o.beamWidth ?? 128;
   let best = root, beamEnd: Node | null = null;
   let deadline = began + o.budgetMs, nodeLimit = o.maxNodes, lastProgress = began;
   const check = () => { if (++nodes > nodeLimit || performance.now() >= deadline) throw new Limit(); };
   const consider = (n: Node) => {
-    const hit = reached(n.snapshot.board, o.target), oldHit = reached(best.snapshot.board, o.target);
+    const hit = n.hit, oldHit = best.hit;
     let better: boolean;
     if (o.objective === 'score') better = n.snapshot.score > best.snapshot.score || (n.snapshot.score === best.snapshot.score && n.rank > best.rank);
     else if (hit || oldHit) better = hit && (!oldHit || n.depth < best.depth);
-    else better = maxTile(n.snapshot.board) > maxTile(best.snapshot.board) || (maxTile(n.snapshot.board) === maxTile(best.snapshot.board) && n.rank > best.rank);
+    else better = n.maximum > best.maximum || (n.maximum === best.maximum && n.rank > best.rank);
     if (better) best = n;
   };
   const children = (n: Node): Node[] => {
     const children: Node[] = [];
     for (const direction of DIRECTIONS) {
       const add = (snapshot: Snapshot, action: TasAction) => {
-        check(); const child = { snapshot, action, parent: n, depth: n.depth + 1, rank: evaluate(snapshot.board) };
+        check(); const maximum = maxTile(snapshot.board);
+        const child: Node = { snapshot, action, parent: n, depth: n.depth + 1, rank: evaluate(snapshot.board), maximum, hit: maximum >= o.target };
         children.push(child); consider(child);
       };
       if (o.mode === 'fixed') {
@@ -61,10 +65,10 @@ export function planTas(start: Snapshot, options: TasOptions, progress?: (value:
         }
       }
     }
-    return children.sort((a, b) => Number(reached(b.snapshot.board, o.target)) - Number(reached(a.snapshot.board, o.target)) || (o.objective === 'score' ? b.snapshot.score - a.snapshot.score : maxTile(b.snapshot.board) - maxTile(a.snapshot.board)) || b.rank - a.rank);
+    return children.sort((a, b) => Number(b.hit) - Number(a.hit) || (o.objective === 'score' ? b.snapshot.score - a.snapshot.score : b.maximum - a.maximum) || b.rank - a.rank);
   };
   const report = (depth: number) => {
-    if (progress && performance.now() - lastProgress >= 200) { progress({ depth, nodes, maxTile: maxTile(best.snapshot.board) }); lastProgress = performance.now(); }
+    if (progress && performance.now() - lastProgress >= 200) { progress({ depth, nodes, maxTile: best.maximum }); lastProgress = performance.now(); }
   };
   const sum = (s: Snapshot) => s.board.cells.reduce((total, e) => total + (e ? 2 ** e : 0), 0);
   let lowerBound = 0;
@@ -83,7 +87,7 @@ export function planTas(start: Snapshot, options: TasOptions, progress?: (value:
     provenDepth = Math.max(0, Math.min(o.horizon, lowerBound - 1));
   }
   try {
-    if (o.objective === 'target' && reached(root.snapshot.board, o.target)) complete = true;
+    if (o.objective === 'target' && root.hit) complete = true;
     else {
       if (strategy !== 'exact') {
         if (strategy === 'hybrid') { deadline = began + o.budgetMs * 0.7; nodeLimit = Math.max(1, Math.floor(o.maxNodes * 0.7)); }
@@ -95,17 +99,17 @@ export function planTas(start: Snapshot, options: TasOptions, progress?: (value:
               const key = `${child.snapshot.rngState}:${child.snapshot.board.cells.join(',')}`, prior = unique.get(key);
               if (!prior || child.snapshot.score > prior.snapshot.score) unique.set(key, child);
             }
-            frontier = [...unique.values()].sort((a, b) => Number(reached(b.snapshot.board, o.target)) - Number(reached(a.snapshot.board, o.target)) || (o.objective === 'score' ? b.snapshot.score - a.snapshot.score : 0) || b.rank - a.rank).slice(0, width);
+            frontier = [...unique.values()].sort((a, b) => Number(b.hit) - Number(a.hit) || (o.objective === 'score' ? b.snapshot.score - a.snapshot.score : 0) || b.rank - a.rank).slice(0, width);
             if (frontier.length) beamEnd = frontier[0];
             report(depth);
-            if (o.objective === 'target' && reached(best.snapshot.board, o.target)) break;
+            if (o.objective === 'target' && best.hit) break;
           }
         } catch (e) { if (!(e instanceof Limit)) throw e; }
         deadline = began + o.budgetMs; nodeLimit = o.maxNodes;
       } else {
         // Short seed route leaves most of the exact-search budget available for proofs.
         let current = root;
-        for (let h = 0; h < Math.min(o.horizon, 64) && !(o.objective === 'target' && reached(current.snapshot.board, o.target)); h++) {
+        for (let h = 0; h < Math.min(o.horizon, 64) && !(o.objective === 'target' && current.hit); h++) {
           const next = children(current)[0]; if (!next) break; current = next;
         }
       }
@@ -115,9 +119,9 @@ export function planTas(start: Snapshot, options: TasOptions, progress?: (value:
         while (stack.length) {
           const n = stack.pop()!;
           check(); consider(n);
-          if (o.objective === 'target' && reached(n.snapshot.board, o.target)) return true;
+          if (o.objective === 'target' && n.hit) return true;
           if (n.depth === limit) continue;
-          if (o.objective === 'target' && Math.max(Math.ceil(Math.max(0, o.target - sum(n.snapshot)) / 4), Math.log2(o.target) - Math.max(2, ...n.snapshot.board.cells)) > limit - n.depth) continue;
+          if (o.objective === 'target' && Math.max(Math.ceil(Math.max(0, o.target - sum(n.snapshot)) / 4), Math.log2(o.target) - Math.max(2, Math.log2(n.maximum))) > limit - n.depth) continue;
           const key = `${limit - n.depth}:${n.snapshot.rngState}:${n.snapshot.board.cells.join(',')}`;
           const score = seen.get(key);
           if (score !== undefined && (o.objective === 'target' || score >= n.snapshot.score)) continue;
@@ -128,21 +132,22 @@ export function planTas(start: Snapshot, options: TasOptions, progress?: (value:
         }
         return false;
       };
-      if (o.objective === 'target' && lowerBound > o.horizon) complete = true;
+      if (obstruction || (o.objective === 'target' && lowerBound > o.horizon)) complete = true;
       else if (strategy !== 'beam') {
         if (o.objective === 'score') { search(o.horizon); provenDepth = o.horizon; complete = true; }
         else for (let h = Math.max(1, lowerBound); h <= o.horizon; h++) {
-          if (reached(best.snapshot.board, o.target) && h >= best.depth) { provenDepth = best.depth; complete = true; break; }
+          if (best.hit && h >= best.depth) { provenDepth = best.depth; complete = true; break; }
           if (search(h)) { provenDepth = h; complete = true; break; }
           provenDepth = h; if (h === o.horizon) complete = true;
         }
       }
     }
   } catch (e) { if (!(e instanceof Limit)) throw e; }
-  if (strategy === 'beam' && o.objective === 'target' && !reached(best.snapshot.board, o.target) && beamEnd && maxTile(beamEnd.snapshot.board) >= maxTile(best.snapshot.board)) best = beamEnd;
+  if (obstruction) { complete = true; provenDepth = o.horizon; }
+  if (strategy === 'beam' && o.objective === 'target' && !best.hit && beamEnd && beamEnd.maximum >= best.maximum) best = beamEnd;
   const path: Node[] = []; for (let n: Node | null = best; n; n = n.parent) path.push(n); path.reverse();
-  const hit = reached(best.snapshot.board, o.target);
-  const note = complete ? o.objective === 'score' ? `已证明 ${o.horizon} 步以内最高新增分 ${best.snapshot.score - start.score}` : hit ? `已证明最短达标路线：${best.depth} 步` : `已证明 ${o.horizon} 步内无法达标；显示候选路线` : `${strategy === 'beam' ? '束搜索候选' : '预算内候选'}：${hit ? `已找到 ${best.depth} 步达标路线` : `当前最大块 ${maxTile(best.snapshot.board)}`}，未证明最优${o.objective === 'target' ? `；已排除 ${provenDepth} 步以内达标` : ''}`;
+  const hit = best.hit;
+  const note = obstruction ? obstruction.reason : complete ? o.objective === 'score' ? `已证明 ${o.horizon} 步以内最高新增分 ${best.snapshot.score - start.score}` : hit ? `已证明最短达标路线：${best.depth} 步` : `已证明 ${o.horizon} 步内无法达标；显示候选路线` : `${strategy === 'beam' ? '束搜索候选' : '预算内候选'}：${hit ? `已找到 ${best.depth} 步达标路线` : `当前最大块 ${best.maximum}`}，未证明最优${o.objective === 'target' ? `；已排除 ${provenDepth} 步以内达标` : ''}`;
   return { options: o, frames: path.map(n => cloneSnapshot(n.snapshot)), actions: path.slice(1).map(n => n.action!), complete, provenDepth, nodes, elapsedMs: performance.now() - began, note };
 }
 function validateOptions(o: TasOptions) {

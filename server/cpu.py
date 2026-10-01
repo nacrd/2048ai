@@ -1,19 +1,23 @@
 """Numba-compiled reference rollout; same policy and PRNG as the browser/CUDA."""
 import numpy as np
 from numba import njit, prange
+from .policy import SNAKE_PATHS
+
+
+@njit(cache=True, inline='always')
+def index_for(n, direction, line, i):
+    return i * n + line if direction == 0 else line * n + n - 1 - i if direction == 1 else (n - 1 - i) * n + line if direction == 2 else line * n + i
 
 
 @njit(cache=True)
-def move(b, n, direction):
-    out = np.zeros(n * n, dtype=np.uint8)
+def move_into(b, n, direction, out, values):
+    for i in range(n * n):
+        out[i] = 0
     score = 0.0
     for line in range(n):
-        indices = np.empty(n, dtype=np.int64)
-        values = np.empty(n, dtype=np.uint8)
         count = 0
         for i in range(n):
-            index = i * n + line if direction == 0 else line * n + n - 1 - i if direction == 1 else (n - 1 - i) * n + line if direction == 2 else line * n + i
-            indices[i] = index
+            index = index_for(n, direction, line, i)
             if b[index]:
                 values[count] = b[index]
                 count += 1
@@ -24,10 +28,23 @@ def move(b, n, direction):
                 v += 1
                 score += 2.0 ** v
                 k += 1
-            out[indices[slot]] = v
+            out[index_for(n, direction, line, slot)] = v
             k += 1
             slot += 1
-    return out, score, np.any(out != b)
+    moved = False
+    for i in range(n * n):
+        if out[i] != b[i]:
+            moved = True
+            break
+    return score, moved
+
+
+@njit(cache=True, nogil=True)
+def move(b, n, direction):
+    out = np.empty(n * n, dtype=np.uint8)
+    values = np.empty(n, dtype=np.uint8)
+    score, moved = move_into(b, n, direction, out, values)
+    return out, score, moved
 
 
 @njit(cache=True)
@@ -67,16 +84,7 @@ def evaluate(b, n):
     for orientation in range(8):
         value, previous = 0, 0
         for rank in range(n * n):
-            r, c = rank // n, rank % n
-            if r % 2:
-                c = n - 1 - c
-            if orientation & 1:
-                r, c = c, r
-            if orientation & 2:
-                r = n - 1 - r
-            if orientation & 4:
-                c = n - 1 - c
-            v = np.int64(b[r * n + c])
+            v = np.int64(b[SNAKE_PATHS[n - 2, orientation, rank]])
             value += v * v * (n * n - rank) * 4
             if rank:
                 value -= max(0, v - previous) ** 2 * 35
@@ -108,32 +116,42 @@ def next_uint(x):
 
 @njit(cache=True)
 def spawn(b, n, rng):
-    available = np.empty(n * n, dtype=np.int64)
     count = 0
-    for x in range(n):
-        for y in range(n):
-            i = y * n + x
-            if not b[i]:
-                available[count] = i
-                count += 1
+    for i in range(n * n):
+        if not b[i]:
+            count += 1
     if count:
         rng = next_uint(rng)
         v = 1 if float(rng) / 4294967296.0 < 0.9 else 2
         rng = next_uint(rng)
-        b[available[int(float(rng) / 4294967296.0 * count)]] = v
+        selected = int(float(rng) / 4294967296.0 * count)
+        # Preserve upstream's column-first order and both RNG draws.
+        for x in range(n):
+            for y in range(n):
+                i = y * n + x
+                if not b[i]:
+                    if selected == 0:
+                        b[i] = v
+                        return rng
+                    selected -= 1
     return rng
 
 
 @njit(cache=True)
-def greedy(b, n):
+def greedy_into(b, n, out, values):
     best, value = -1, -1e100
     for d in range(4):
-        out, score, moved = move(b, n, d)
+        score, moved = move_into(b, n, d, out, values)
         if moved:
             q = evaluate(out, n) + np.log2(score + 1) * 12
             if q > value:
                 best, value = d, q
     return best
+
+
+@njit(cache=True)
+def greedy(b, n):
+    return greedy_into(b, n, np.empty(n * n, dtype=np.uint8), np.empty(n, dtype=np.uint8))
 
 
 @njit(cache=True)
@@ -148,6 +166,9 @@ def trajectory_seed(seed, direction, ident):
 @njit(cache=True)
 def rollout_one(board, n, direction, ident, seed, horizon, objective, target):
     b = board.copy()
+    out = np.empty(n * n, dtype=np.uint8)
+    trial = np.empty(n * n, dtype=np.uint8)
+    values = np.empty(n, dtype=np.uint8)
     rng = trajectory_seed(seed, direction, ident)
     score, action = 0.0, direction
     for step in range(horizon):
@@ -155,17 +176,20 @@ def rollout_one(board, n, direction, ident, seed, horizon, objective, target):
             return 1.0
         if action < 0:
             break
-        out, delta, moved = move(b, n, action)
+        delta, moved = move_into(b, n, action, out, values)
         if not moved:
             break
         score += delta
-        b = out
+        b, out = out, b
         rng = spawn(b, n, rng)
-        action = greedy(b, n)
+        if objective and np.max(b) >= target:
+            return 1.0
+        if step + 1 < horizon:
+            action = greedy_into(b, n, trial, values)
     return (1.0 if np.max(b) >= target else 0.0) if objective else score
 
 
-@njit(cache=True, parallel=True)
+@njit(cache=True, parallel=True, nogil=True)
 def rollout_batch(board, n, directions, offset, count, seed, horizon, objective, target):
     results = np.empty((len(directions), count), dtype=np.float64)
     for j in prange(len(directions) * count):
