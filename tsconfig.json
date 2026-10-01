@@ -4,5 +4,5 @@
     "lib": ["ES2022", "DOM", "WebWorker"], "strict": true, "noEmit": true,
     "skipLibCheck": true, "types": ["node"], "allowImportingTsExtensions": true
   },
-  "include": ["src", "tests", "benchmarks", "vite.config.ts"]
+  "include": ["src", "tests", "benchmarks", "scripts/*.ts", "vite.config.ts"]
 }

@@ -1,3 +1,4 @@
+import { fastMove4 } from './fast4';
 export type Direction = 0 | 1 | 2 | 3;
 export const DIRECTIONS: Direction[] = [0, 1, 2, 3];
 export const ARROWS = ['↑', '→', '↓', '←'];
@@ -22,6 +23,7 @@ export function lineIndices(size: number, direction: Direction): number[][] {
 }
 
 export function applyMove(board: Board, direction: Direction, animate = false): MoveResult {
+  if (!animate) { const fast = fastMove4(board, direction); if (fast) return fast; }
   const cells = new Array<number>(board.cells.length).fill(0);
   const motions: Motion[] = [];
   let scoreDelta = 0;

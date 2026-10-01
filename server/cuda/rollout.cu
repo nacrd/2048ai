@@ -25,16 +25,27 @@ __device__ double evaluate(const u8* b,int n) {
   int empty=0,smooth=0,merges=0,monotonic=0,maximum=0;
   for(int r=0;r<n;r++) for(int c=0;c<n;c++) {
     int v=b[r*n+c]; if(!v) empty++; maximum=max(maximum,v);
-    if(c+1<n) { int w=b[r*n+c+1]; if(v&&w) {smooth+=abs(v-w); if(v==w)merges++;} }
-    if(r+1<n) { int w=b[(r+1)*n+c]; if(v&&w) {smooth+=abs(v-w); if(v==w)merges++;} }
+    if(c+1<n) { int w=b[r*n+c+1]; if(v&&w) {smooth+=abs(v-w); if(v==w)merges+=v;} }
+    if(r+1<n) { int w=b[(r+1)*n+c]; if(v&&w) {smooth+=abs(v-w); if(v==w)merges+=v;} }
   }
   for(int axis=0;axis<2;axis++) for(int line=0;line<n;line++) {
     int up=0,down=0;
-    for(int i=0;i<n-1;i++){int a=b[axis?i*n+line:line*n+i],v=b[axis?(i+1)*n+line:line*n+i+1];up+=max(0,v-a);down+=max(0,a-v);}
+    for(int i=0;i<n-1;i++){int a=b[axis?i*n+line:line*n+i],v=b[axis?(i+1)*n+line:line*n+i+1];a*=a;v*=v;up+=max(0,v-a);down+=max(0,a-v);}
     monotonic+=min(up,down);
   }
   bool corner=max(max((int)b[0],(int)b[n-1]),max((int)b[n*(n-1)],(int)b[n*n-1]))==maximum;
-  return empty*280-smooth*8+merges*35-monotonic*65+maximum*20+(corner?maximum*45:0);
+  if(!empty&&!merges)return -1000000000.0;
+  int snake=-2147483647;
+  for(int orientation=0;orientation<8;orientation++){
+    int value=0,previous=0;
+    for(int rank=0;rank<n*n;rank++){
+      int r=rank/n,c=rank%n;if(r%2)c=n-1-c;
+      if(orientation&1){int t=r;r=c;c=t;}if(orientation&2)r=n-1-r;if(orientation&4)c=n-1-c;
+      int v=b[r*n+c];value+=v*v*(n*n-rank)*4;if(rank){int d=max(0,v-previous);value-=d*d*35;}previous=v;
+    }
+    snake=max(snake,value);
+  }
+  return empty*(280+maximum*20)-smooth*8+merges*35-monotonic*12+maximum*maximum*20+(corner?maximum*maximum*35:0)+snake;
 }
 __device__ unsigned next_uint(unsigned& x){ x^=x<<13;x^=x>>17;x^=x<<5;return x; }
 __device__ void spawn(u8* b,int n,unsigned& rng){

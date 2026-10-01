@@ -23,6 +23,7 @@
 <label>目标块<input id="target" type="number" min="2" value="2048" step="2048"></label>
 <label>计算预算<select id="budget"><option value="50">50 ms · 快速</option><option value="200" selected>200 ms · 平衡</option><option value="1000">1000 ms · 深入</option><option value="5000">5000 ms · 分析</option><option value="30000">30 s · TAS 规划</option></select></label>
 <label>搜索 / 模拟步数<input id="horizon" type="number" min="1" step="1" value="4"></label>
+<label>搜索节点预算<input id="nodes" type="number" min="1" step="100000" value="1000000"></label>
 <label>每方向模拟数<input id="trajectories" type="number" min="1" max="65536" value="128"></label>
 <label>移动间隔 (ms)<input id="interval" type="number" min="0" max="5000" value="180"></label>
 </div>
@@ -30,6 +31,7 @@
 <p id="mode-help" class="hint">限时搜索 + 启发式评分。建议动作属于近似决策。</p></section>
 <section id="tas-panel" class="panel" hidden><div class="panel-heading"><h2>TAS 路线工作台</h2><span class="badge">CPU · 离线搜索</span></div>
 <label>出块条件<select id="tas-mode"><option value="fixed">固定种子 · 提前计算出块</option><option value="ideal">理想出块 · 搜索位置与 2 / 4</option></select></label>
+<div class="field-grid"><label>路线搜索<select id="tas-search"><option value="hybrid">混合 · 先找路线再证明</option><option value="beam">束搜索 · 长路线候选</option><option value="exact">完整回溯 · 最优性证明</option></select></label><label>束宽<input id="tas-width" type="number" min="1" max="4096" value="128"></label></div>
 <p id="tas-rules" class="hint">从当前棋盘及随机状态规划。目标块优先最少步数；得分优化指定步数以内的累计合并分。</p>
 <div class="button-row"><button id="tas-plan">规划路线</button><button id="tas-run" class="primary">执行路线</button><button id="tas-step" class="secondary">路线单步</button><button id="tas-restore" class="secondary">回到路线起点</button></div>
 <p id="tas-status" role="status" class="hint">尚未规划。时间预算作用于整条路线；搜索步数限制路线长度。</p>

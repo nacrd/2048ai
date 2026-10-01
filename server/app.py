@@ -89,7 +89,7 @@ def confidence(successes, count):
 @app.post('/api/solve')
 async def solve(payload: SolveRequest, request: Request):
     start = perf_counter()
-    from .cpu import move, rollout_batch
+    from .cpu import direction_value, move, rollout_batch
     n = len(payload.board)
     board = np.array([int(math.log2(v)) if v else 0 for row in payload.board for v in row], dtype=np.uint8)
     directions = np.array([d for d in range(4) if move(board, n, d)[2]], dtype=np.int32)
@@ -115,9 +115,12 @@ async def solve(payload: SolveRequest, request: Request):
                 values = await asyncio.to_thread(rollout_batch, *args)
             sums += values.sum(axis=1)
             count += batch
-    choices = [{'direction': int(d), 'value': float(sums[i] / count), 'samples': count, **({'confidence': confidence(sums[i], count)} if payload.objective == 'target' else {})} for i, d in enumerate(directions)] if count else []
-    best = max(choices, key=lambda c: (c['value'], -c['direction']))['direction'] if choices else None
-    return {'direction': best, 'choices': choices, 'algorithm': 'rollout', 'backend': payload.backend, 'complete': not len(directions) or count == payload.trajectories, 'depth': payload.horizon, 'nodes': count * len(directions) * payload.horizon, 'elapsedMs': (perf_counter() - start) * 1000, 'kernelMs': kernel_ms, 'requestId': payload.requestId, 'note': '固定贪心后续策略的模拟估计；不是最优策略胜率' if len(directions) else '没有合法移动'}
+    choices = [{'direction': int(d), 'value': float(sums[i] / count), 'tieBreak': float(direction_value(board, n, int(d))), 'samples': count, **({'confidence': confidence(sums[i], count)} if payload.objective == 'target' else {})} for i, d in enumerate(directions)] if count else []
+    best = max(choices, key=lambda c: (c['value'], c['tieBreak'], -c['direction']))['direction'] if choices else None
+    note = '固定贪心后续策略的模拟估计；不是最优策略胜率' if len(directions) else '没有合法移动'
+    if payload.objective == 'target' and choices and all(c['value'] == 0 for c in choices):
+        note += '；无成功样本，按预期局面评分选择，概率仍为 0'
+    return {'direction': best, 'choices': choices, 'algorithm': 'rollout', 'backend': payload.backend, 'complete': not len(directions) or count == payload.trajectories, 'depth': payload.horizon, 'nodes': count * len(directions) * payload.horizon, 'elapsedMs': (perf_counter() - start) * 1000, 'kernelMs': kernel_ms, 'requestId': payload.requestId, 'note': note}
 
 
 if (ROOT / 'dist').exists():

@@ -1,33 +1,12 @@
 import { applyMove, DIRECTIONS, emptyCells, hashSeed, legalMoves, reached, RNG, spawnTile, trajectorySeed, type Board, type Direction } from '../core/engine';
+import { directionValue, evaluate } from './evaluation';
+export { evaluate } from './evaluation';
 export type Algorithm = 'expectimax' | 'rollout' | 'exact';
 export type Objective = 'score' | 'target';
 export interface Options { algorithm: Algorithm; objective: Objective; target: number; budgetMs: number; horizon: number; trajectories: number; seed: number; maxNodes?: number }
-export interface Choice { direction: Direction; value: number; samples?: number; confidence?: [number, number] }
+export interface Choice { direction: Direction; value: number; tieBreak?: number; samples?: number; confidence?: [number, number] }
 export interface SolveResult { direction: Direction | null; choices: Choice[]; algorithm: Algorithm; backend: 'cpu' | 'cuda'; complete: boolean; depth: number; nodes: number; elapsedMs: number; note: string }
 
-// Same lightweight policy is implemented by the CPU and CUDA rollout engines.
-export function evaluate(board: Board): number {
-  const { size: n, cells } = board;
-  let empty = 0, smooth = 0, merges = 0, monotonic = 0, max = 0;
-  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-    const v = cells[r * n + c];
-    if (!v) empty++;
-    max = Math.max(max, v);
-    if (c + 1 < n) { const w = cells[r * n + c + 1]; if (v && w) { smooth += Math.abs(v - w); if (v === w) merges++; } }
-    if (r + 1 < n) { const w = cells[(r + 1) * n + c]; if (v && w) { smooth += Math.abs(v - w); if (v === w) merges++; } }
-  }
-  for (let axis = 0; axis < 2; axis++) for (let line = 0; line < n; line++) {
-    let up = 0, down = 0;
-    for (let i = 0; i + 1 < n; i++) {
-      const a = cells[axis ? i * n + line : line * n + i];
-      const b = cells[axis ? (i + 1) * n + line : line * n + i + 1];
-      up += Math.max(0, b - a); down += Math.max(0, a - b);
-    }
-    monotonic += Math.min(up, down);
-  }
-  const corner = Math.max(cells[0], cells[n - 1], cells[n * (n - 1)], cells[n * n - 1]) === max;
-  return empty * 280 - smooth * 8 + merges * 35 - monotonic * 65 + max * 20 + (corner ? max * 45 : 0);
-}
 export function greedy(board: Board): Direction | null {
   let best: Direction | null = null, value = -Infinity;
   for (const d of DIRECTIONS) {
@@ -77,9 +56,10 @@ export function solve(board: Board, options: Options): SolveResult {
       if (id && performance.now() - start >= o.budgetMs) break;
       for (const d of legal) { const s = sums.get(d)!; s.sum += rolloutOne(board, d, id, o); s.n++; nodes += o.horizon; }
     }
-    choices = legal.map(direction => { const s = sums.get(direction)!; return { direction, value: s.n ? s.sum / s.n : 0, samples: s.n, ...(o.objective === 'target' ? { confidence: wilson(s.sum, s.n) } : {}) }; });
+    choices = legal.map(direction => { const s = sums.get(direction)!; return { direction, value: s.n ? s.sum / s.n : 0, tieBreak: directionValue(board, direction), samples: s.n, ...(o.objective === 'target' ? { confidence: wilson(s.sum, s.n) } : {}) }; });
     complete = choices.every(c => c.samples === o.trajectories); depth = o.horizon;
     note = '固定贪心后续策略的模拟估计；不是最优策略胜率';
+    if (o.objective === 'target' && choices.length && choices.every(c => c.value === 0)) note += '；无成功样本，按预期局面评分选择，概率仍为 0';
   } else {
     const exact = o.algorithm === 'exact';
     const cache = new Map<string, number>();
@@ -142,7 +122,7 @@ export function solve(board: Board, options: Options): SolveResult {
     note = exact ? (complete ? `H=${o.horizon} 范围内完整搜索，浮点容差 1e-9` : '预算不足，未完成精确分析，不提供最优动作') : '截断 Expectimax 启发式评分，不代表胜率';
   }
   if (!legal.length) { choices = []; complete = true; note = '没有合法移动'; }
-  const best = [...choices].sort((a, b) => b.value - a.value || a.direction - b.direction)[0];
+  const best = [...choices].sort((a, b) => b.value - a.value || (b.tieBreak ?? 0) - (a.tieBreak ?? 0) || a.direction - b.direction)[0];
   return { direction: best?.direction ?? null, choices, algorithm: o.algorithm, backend: 'cpu', complete, depth, nodes, elapsedMs: performance.now() - start, note };
 }
 export const DEFAULT_OPTIONS: Options = { algorithm: 'expectimax', objective: 'score', target: 2048, budgetMs: 200, horizon: 4, trajectories: 128, seed: hashSeed('analysis'), maxNodes: 250000 };

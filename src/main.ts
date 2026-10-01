@@ -13,6 +13,7 @@ let best = Number(readStorage(`${STORAGE}-best`) || 0);
 let history: Snapshot[] = [], replay: number | null = null;
 let state: Snapshot, version = 0, running = false, busy = false, timer: ReturnType<typeof setTimeout> | undefined;
 let worker: Worker | null = null, controller: AbortController | null = null;
+const idleWorkers: Partial<Record<'cpu' | 'tas', Worker>> = {};
 let pendingReject: ((error: Error) => void) | null = null;
 interface Device { available: boolean; name?: string; reason?: string; autoThreshold?: { size: number; minHorizon: number; minTrajectories: number } | null }
 let device: Device = { available: false };
@@ -98,10 +99,12 @@ function fresh() {
 }
 function options(): Options {
   const horizon = Number(input('horizon').value), trajectories = Number(input('trajectories').value), interval = Number(input('interval').value);
+  const maxNodes = Number(input('nodes').value);
+  if (!Number.isSafeInteger(maxNodes) || maxNodes < 1) throw new Error('节点预算必须为正的安全整数');
   if (!Number.isSafeInteger(horizon) || horizon < 1) throw new Error('搜索 / 模拟步数必须为正的安全整数');
   if (!Number.isInteger(trajectories) || trajectories < 1 || trajectories > 65536) throw new Error('每方向模拟数必须为 1–65536');
   if (!Number.isFinite(interval) || interval < 0 || interval > 5000) throw new Error('移动间隔必须为 0–5000 ms');
-  return { ...DEFAULT_OPTIONS, algorithm: select('algorithm').value as Options['algorithm'], objective: select('objective').value as Options['objective'], target: readTarget(), budgetMs: Number(select('budget').value), horizon, trajectories, seed: hashSeed('analysis-independent') };
+  return { ...DEFAULT_OPTIONS, maxNodes, algorithm: select('algorithm').value as Options['algorithm'], objective: select('objective').value as Options['objective'], target: readTarget(), budgetMs: Number(select('budget').value), horizon, trajectories, seed: hashSeed('analysis-independent') };
 }
 function canPlay() { return !terminal(state.board) && (input('continue').checked || !reached(state.board, state.target)); }
 function move(direction: Direction, manual = false) {
@@ -113,14 +116,27 @@ function move(direction: Direction, manual = false) {
   history.push(cloneSnapshot(state)); state = next.snapshot; version++; best = Math.max(best, state.score);
   clearAnalysis(); store(); render(next.transition, next.spawned);
 }
-function cpu(board: Board, o: Options, id: number): Promise<SolveResult> {
+function workerRequest<T>(kind: 'cpu' | 'tas', payload: object, id: number, progress?: (value: { depth: number; nodes: number; maxTile: number }) => void): Promise<T> {
   return new Promise((resolve, reject) => {
-    pendingReject = reject; const activeWorker = new Worker(new URL('./ai/worker.ts', import.meta.url), { type: 'module' }); worker = activeWorker;
-    activeWorker.onmessage = event => { if (event.data.id !== id) return; activeWorker.terminate(); if (worker === activeWorker) { worker = null; pendingReject = null; } event.data.error ? reject(new Error(event.data.error)) : resolve(event.data.result); };
+    pendingReject = reject;
+    const activeWorker = idleWorkers[kind] ?? (kind === 'cpu' ? new Worker(new URL('./ai/worker.ts', import.meta.url), { type: 'module' }) : new Worker(new URL('./ai/tas-worker.ts', import.meta.url), { type: 'module' }));
+    delete idleWorkers[kind]; worker = activeWorker;
+    activeWorker.onmessage = event => {
+      if (event.data.id !== id || worker !== activeWorker || id !== version) return;
+      if (event.data.progress) { progress?.(event.data.progress); return; }
+      worker = null; pendingReject = null;
+      if (event.data.error) { activeWorker.terminate(); reject(new Error(event.data.error)); }
+      else {
+        idleWorkers[kind] = activeWorker;
+        activeWorker.onerror = () => { if (idleWorkers[kind] === activeWorker) delete idleWorkers[kind]; activeWorker.terminate(); };
+        resolve(event.data.result);
+      }
+    };
     activeWorker.onerror = event => { activeWorker.terminate(); if (worker === activeWorker) { worker = null; pendingReject = null; } reject(new Error(event.message || 'Worker 运行失败')); };
-    activeWorker.postMessage({ id, board, options: o });
+    activeWorker.postMessage({ id, ...payload });
   });
 }
+function cpu(board: Board, o: Options, id: number): Promise<SolveResult> { return workerRequest('cpu', { board, options: o }, id); }
 async function compute(board: Board, o: Options, id: number): Promise<SolveResult> {
   const backend = select('backend').value;
   const threshold = device.autoThreshold;
@@ -185,13 +201,10 @@ async function planRoute() {
   const owner = version; resetTas(); busy = true; updateButtons();
   try {
     const common = options();
-    const o: TasOptions = { mode: select('tas-mode').value as TasOptions['mode'], objective: common.objective, target: common.target, horizon: common.horizon, budgetMs: common.budgetMs, maxNodes: 300000 };
+    const o: TasOptions = { mode: select('tas-mode').value as TasOptions['mode'], objective: common.objective, target: common.target, horizon: common.horizon, budgetMs: common.budgetMs, maxNodes: common.maxNodes!, strategy: select('tas-search').value as TasOptions['strategy'], beamWidth: Number(input('tas-width').value) };
     notify('TAS 正在回溯规划整条路线… 暂停可取消。');
-    const result = await new Promise<TasPlan>((resolve, reject) => {
-      pendingReject = reject; const active = new Worker(new URL('./ai/tas-worker.ts', import.meta.url), { type: 'module' }); worker = active;
-      active.onmessage = event => { if (event.data.id !== owner) return; active.terminate(); if (worker === active) { worker = null; pendingReject = null; } event.data.error ? reject(new Error(event.data.error)) : resolve(event.data.result); };
-      active.onerror = event => { active.terminate(); if (worker === active) { worker = null; pendingReject = null; } reject(new Error(event.message || 'TAS Worker 运行失败')); };
-      active.postMessage({ id: owner, snapshot: cloneSnapshot(state), options: o });
+    const result = await workerRequest<TasPlan>('tas', { snapshot: cloneSnapshot(state), options: o }, owner, value => {
+      el('tas-status').textContent = `搜索中 · 深度 ${value.depth} · ${value.nodes.toLocaleString()} 节点 · 候选最大块 ${value.maxTile}`;
     });
     if (owner !== version) return;
     tas = result; tasCursor = 0; tasPreview = null; showTas();
@@ -254,11 +267,11 @@ el('export').onclick = () => {
 input('file').onchange = async () => { const file = input('file').files?.[0]; if (file) { if (file.size > 20 * 1024 * 1024) notify('存档文件不能超过 20 MB', true); else importText(await file.text()); } input('file').value = ''; };
 input('timeline').oninput = () => { cancel(); tasPreview = null; replay = Number(input('timeline').value); clearAnalysis(); showTas(); render(); };
 el('live').onclick = () => { cancel(); tasPreview = null; replay = null; showTas(); render(); };
-for (const id of ['algorithm', 'backend', 'objective', 'budget', 'horizon', 'trajectories', 'interval', 'continue']) el(id).onchange = () => {
+for (const id of ['algorithm', 'backend', 'objective', 'budget', 'horizon', 'nodes', 'trajectories', 'interval', 'continue', 'tas-search', 'tas-width']) el(id).onchange = () => {
   cancel(); if (!['interval', 'continue'].includes(id)) resetTas(); clearAnalysis(); const mode = select('algorithm').value;
   el('tas-panel').hidden = mode !== 'tas';
   if (mode !== 'tas' && Number(select('budget').value) > 5000) select('budget').value = '5000';
-  el('mode-help').textContent = mode === 'tas' ? '离线回溯：固定种子可读取未来 RNG；理想模式控制出块。目标块搜索最短路线，得分搜索 H 步内最高分。预算不足只给候选。' : mode === 'exact' ? '完整枚举 H 步内随机分支。预算不足时不提供最优结论。推荐小棋盘和浅层分析。' : mode === 'rollout' ? '固定贪心后续策略的模拟估计；CUDA 适合较大批量。步数无 64 上限，轨迹可提前终局，时间预算在完整批次之间检查。' : '限时搜索 + 启发式评分。建议动作属于近似决策。';
+  el('mode-help').textContent = mode === 'tas' ? '混合搜索先生成候选，再尝试证明；束搜索适合长路线，完整回溯用于最优性证明。固定种子读取未来 RNG，理想模式控制出块。' : mode === 'exact' ? '完整枚举 H 步内随机分支。预算不足时不提供最优结论。推荐小棋盘和浅层分析。' : mode === 'rollout' ? '增强贪心后续策略的模拟估计；CUDA 适合较大批量。无成功样本时按局面评分择优。时间预算在完整批次间检查。' : '限时搜索 + 多方向结构评分。建议动作属于近似决策。';
   select('backend').disabled = mode !== 'rollout'; input('trajectories').disabled = mode !== 'rollout';
   render();
 };
@@ -281,6 +294,7 @@ el('tas-import').onclick = () => {
   try {
     const result = importTas(el<HTMLTextAreaElement>('tas-json').value); load(result.frames[0]); tas = result;
     select('algorithm').value = 'tas'; select('tas-mode').value = result.options.mode; select('objective').value = result.options.objective; input('horizon').value = String(result.options.horizon);
+    select('tas-search').value = result.options.strategy ?? 'exact'; input('tas-width').value = String(result.options.beamWidth ?? 128); input('nodes').value = String(result.options.maxNodes);
     el('tas-panel').hidden = false; select('backend').disabled = true; input('trajectories').disabled = true;
     el('tas-rules').textContent = result.options.mode === 'ideal' ? '已加载理想出块路线：出块受控，不消耗游戏 RNG。' : '已加载固定种子路线：提前计算出块。';
     showTas(); render(); notify(result.note);

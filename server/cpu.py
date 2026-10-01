@@ -44,24 +44,58 @@ def evaluate(b, n):
                 if v and w:
                     smooth += abs(v - w)
                     if v == w:
-                        merges += 1
+                        merges += v
             if r + 1 < n:
                 w = np.int64(b[(r + 1) * n + c])
                 if v and w:
                     smooth += abs(v - w)
                     if v == w:
-                        merges += 1
+                        merges += v
     for axis in range(2):
         for line in range(n):
             up, down = 0, 0
             for i in range(n - 1):
-                a = np.int64(b[i * n + line] if axis else b[line * n + i])
-                v = np.int64(b[(i + 1) * n + line] if axis else b[line * n + i + 1])
+                a = np.int64(b[i * n + line] if axis else b[line * n + i]) ** 2
+                v = np.int64(b[(i + 1) * n + line] if axis else b[line * n + i + 1]) ** 2
                 up += max(0, v - a)
                 down += max(0, a - v)
             monotonic += min(up, down)
     corner = max(b[0], b[n - 1], b[n * (n - 1)], b[n * n - 1]) == maximum
-    return empty * 280 - smooth * 8 + merges * 35 - monotonic * 65 + maximum * 20 + (maximum * 45 if corner else 0)
+    if not empty and not merges:
+        return -1000000000.0
+    snake = -1e100
+    for orientation in range(8):
+        value, previous = 0, 0
+        for rank in range(n * n):
+            r, c = rank // n, rank % n
+            if r % 2:
+                c = n - 1 - c
+            if orientation & 1:
+                r, c = c, r
+            if orientation & 2:
+                r = n - 1 - r
+            if orientation & 4:
+                c = n - 1 - c
+            v = np.int64(b[r * n + c])
+            value += v * v * (n * n - rank) * 4
+            if rank:
+                value -= max(0, v - previous) ** 2 * 35
+            previous = v
+        snake = max(snake, value)
+    return empty * (280 + maximum * 20) - smooth * 8 + merges * 35 - monotonic * 12 + maximum * maximum * 20 + (maximum * maximum * 35 if corner else 0) + snake
+
+
+@njit(cache=True)
+def direction_value(b, n, direction):
+    out, score, moved = move(b, n, direction)
+    empty = np.flatnonzero(out == 0)
+    value = 0.0
+    for index in empty:
+        for exponent in range(1, 3):
+            out[index] = exponent
+            value += evaluate(out, n) * (0.9 if exponent == 1 else 0.1) / len(empty)
+        out[index] = 0
+    return (value if len(empty) else evaluate(out, n)) + np.log2(score + 1) * 12
 
 
 @njit(cache=True)

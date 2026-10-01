@@ -1,8 +1,8 @@
 import { applyMove, fromMatrix, legalMoves, matrix, RNG, spawnTile, type Board, type Direction, type MoveResult } from './engine';
 export interface Snapshot { board: Board; score: number; rngState: number; target: number; moves: number }
 export function cloneSnapshot(s: Snapshot): Snapshot { return { ...s, board: { size: s.board.size, cells: [...s.board.cells] } }; }
-export function advance(s: Snapshot, direction: Direction): { snapshot: Snapshot; transition: MoveResult; spawned: number | null } {
-  const transition = applyMove(s.board, direction, true);
+export function advance(s: Snapshot, direction: Direction, animate = true): { snapshot: Snapshot; transition: MoveResult; spawned: number | null } {
+  const transition = applyMove(s.board, direction, animate);
   if (!transition.moved) return { snapshot: s, transition, spawned: null };
   const rng = new RNG(s.rngState);
   const spawned = spawnTile(transition.board, rng);
