@@ -22,7 +22,7 @@
 <label>求解目标<select id="objective"><option value="score">提高得分</option><option value="target">达到目标块</option></select></label>
 <label>目标块<input id="target" type="number" min="2" value="2048" step="2048"></label>
 <label>计算预算<select id="budget"><option value="50">50 ms · 快速</option><option value="200" selected>200 ms · 平衡</option><option value="1000">1000 ms · 深入</option><option value="5000">5000 ms · 分析</option><option value="30000">30 s · TAS 规划</option></select></label>
-<label>搜索 / 模拟步数<input id="horizon" type="number" min="1" max="64" value="4"></label>
+<label>搜索 / 模拟步数<input id="horizon" type="number" min="1" step="1" value="4"></label>
 <label>每方向模拟数<input id="trajectories" type="number" min="1" max="65536" value="128"></label>
 <label>移动间隔 (ms)<input id="interval" type="number" min="0" max="5000" value="180"></label>
 </div>

@@ -49,11 +49,11 @@ __device__ int greedy(const u8* b,int n){
   for(int d=0;d<4;d++){double score;if(move_board(b,out,n,d,&score)){double q=evaluate(out,n)+log2(score+1)*12;if(q>value){best=d;value=q;}}}
   return best;
 }
-extern "C" __global__ void rollout(const u8* input,int n,const int* directions,int numDirections,int offset,int count,unsigned seed,int horizon,int objective,int target,double* results){
+extern "C" __global__ void rollout(const u8* input,int n,const int* directions,int numDirections,int offset,int count,unsigned seed,unsigned long long horizon,int objective,int target,double* results){
   int j=blockIdx.x*blockDim.x+threadIdx.x;if(j>=numDirections*count)return;
   int dirIndex=j/count,ident=j%count,action=directions[dirIndex];unsigned rng=trajectory_seed(seed,action,offset+ident);
   u8 b[36],out[36];for(int i=0;i<n*n;i++)b[i]=input[i];double score=0;
-  for(int step=0;step<horizon;step++){
+  for(unsigned long long step=0;step<horizon;step++){
     if(objective){bool won=false;for(int i=0;i<n*n;i++)if(b[i]>=target)won=true;if(won){results[j]=1;return;}}
     if(action<0)break;double delta;if(!move_board(b,out,n,action,&delta))break;score+=delta;
     for(int i=0;i<n*n;i++)b[i]=out[i];spawn(b,n,rng);action=greedy(b,n);

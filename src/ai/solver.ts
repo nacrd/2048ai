@@ -58,6 +58,7 @@ export function rolloutOne(board: Board, direction: Direction, id: number, o: Op
   return o.objective === 'target' ? Number(reached(b, o.target)) : score;
 }
 export function solve(board: Board, options: Options): SolveResult {
+  if (!Number.isSafeInteger(options.horizon) || options.horizon < 1) throw new Error('搜索 / 模拟步数必须为正的安全整数');
   const start = performance.now();
   const o = { ...options, maxNodes: options.maxNodes ?? 250000 };
   let nodes = 0, depth = 0, complete = false;
@@ -83,29 +84,54 @@ export function solve(board: Board, options: Options): SolveResult {
     const exact = o.algorithm === 'exact';
     const cache = new Map<string, number>();
     const key = (b: Board, h: number, kind: string) => `${kind}:${h}:${b.cells.join(',')}`;
-    const player = (b: Board, h: number): number => {
-      check();
-      if (o.objective === 'target' && reached(b, o.target)) return exact ? 1 : 100000;
-      if (!h) return exact ? 0 : evaluate(b);
-      const k = key(b, h, 'p'); const known = cache.get(k); if (known !== undefined) return known;
-      let best = -Infinity;
-      for (const d of DIRECTIONS) { const m = applyMove(b, d); if (m.moved) best = Math.max(best, reward(m.scoreDelta) + chance(m.board, h - 1)); }
-      if (best === -Infinity) best = exact ? 0 : evaluate(b) - 10000;
-      cache.set(k, best); return best;
-    };
     const reward = (score: number) => exact ? (o.objective === 'score' ? score : 0) : Math.log2(score + 1) * 12;
-    const chance = (b: Board, h: number): number => {
-      check();
-      if (o.objective === 'target' && reached(b, o.target)) return exact ? 1 : 100000;
-      const k = key(b, h, 'c'); const known = cache.get(k); if (known !== undefined) return known;
-      const empties = emptyCells(b);
-      if (!empties.length) return player(b, h);
-      let total = 0;
-      for (const i of empties) for (const [v, p] of [[1, 0.9], [2, 0.1]]) {
-        const cells = [...b.cells]; cells[i] = v;
-        total += p * player({ size: b.size, cells }, h) / empties.length;
+    type Kind = 'p' | 'c';
+    interface Edge { board: Board; h: number; kind: Kind; weight: number; reward: number }
+    interface Frame extends Edge { edges?: Generator<Edge>; value: number; key?: string }
+    function* edges(b: Board, h: number, kind: Kind): Generator<Edge> {
+      if (kind === 'p') {
+        for (const d of DIRECTIONS) {
+          const m = applyMove(b, d);
+          if (m.moved) yield { board: m.board, h: h - 1, kind: 'c', weight: 1, reward: reward(m.scoreDelta) };
+        }
+      } else {
+        const empties = emptyCells(b);
+        if (!empties.length) yield { board: b, h, kind: 'p', weight: 1, reward: 0 };
+        for (const i of empties) for (const [v, p] of [[1, 0.9], [2, 0.1]]) {
+          const cells = [...b.cells]; cells[i] = v;
+          yield { board: { size: b.size, cells }, h, kind: 'p', weight: p / empties.length, reward: 0 };
+        }
       }
-      cache.set(k, total); return total;
+    }
+    // Explicit frames preserve player-max/chance-average semantics at any requested depth.
+    const chance = (b: Board, h: number): number => {
+      const frame = (e: Edge): Frame => ({ ...e, value: e.kind === 'p' ? -Infinity : 0 });
+      const stack = [frame({ board: b, h, kind: 'c', weight: 1, reward: 0 })];
+      let result = 0;
+      const finish = (value: number) => {
+        const child = stack.pop()!;
+        if (child.key) cache.set(child.key, value);
+        const parent = stack.at(-1);
+        if (!parent) result = value;
+        else if (parent.kind === 'p') parent.value = Math.max(parent.value, child.reward + value);
+        else parent.value += child.weight * value;
+      };
+      while (stack.length) {
+        const current = stack.at(-1)!;
+        if (!current.edges) {
+          check();
+          if (o.objective === 'target' && reached(current.board, o.target)) { finish(exact ? 1 : 100000); continue; }
+          if (current.kind === 'p' && !current.h) { finish(exact ? 0 : evaluate(current.board)); continue; }
+          current.key = key(current.board, current.h, current.kind);
+          const known = cache.get(current.key);
+          if (known !== undefined) { finish(known); continue; }
+          current.edges = edges(current.board, current.h, current.kind);
+        }
+        const next = current.edges.next();
+        if (!next.done) stack.push(frame(next.value));
+        else finish(current.value === -Infinity ? exact ? 0 : evaluate(current.board) - 10000 : current.value);
+      }
+      return result;
     };
     const root = (h: number) => legal.map(direction => { const m = applyMove(board, direction); return { direction, value: reward(m.scoreDelta) + chance(m.board, h - 1) }; });
     try {

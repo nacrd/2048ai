@@ -98,7 +98,7 @@ function fresh() {
 }
 function options(): Options {
   const horizon = Number(input('horizon').value), trajectories = Number(input('trajectories').value), interval = Number(input('interval').value);
-  if (!Number.isInteger(horizon) || horizon < 1 || horizon > 64) throw new Error('搜索 / 模拟步数必须为 1–64');
+  if (!Number.isSafeInteger(horizon) || horizon < 1) throw new Error('搜索 / 模拟步数必须为正的安全整数');
   if (!Number.isInteger(trajectories) || trajectories < 1 || trajectories > 65536) throw new Error('每方向模拟数必须为 1–65536');
   if (!Number.isFinite(interval) || interval < 0 || interval > 5000) throw new Error('移动间隔必须为 0–5000 ms');
   return { ...DEFAULT_OPTIONS, algorithm: select('algorithm').value as Options['algorithm'], objective: select('objective').value as Options['objective'], target: readTarget(), budgetMs: Number(select('budget').value), horizon, trajectories, seed: hashSeed('analysis-independent') };
@@ -258,7 +258,7 @@ for (const id of ['algorithm', 'backend', 'objective', 'budget', 'horizon', 'tra
   cancel(); if (!['interval', 'continue'].includes(id)) resetTas(); clearAnalysis(); const mode = select('algorithm').value;
   el('tas-panel').hidden = mode !== 'tas';
   if (mode !== 'tas' && Number(select('budget').value) > 5000) select('budget').value = '5000';
-  el('mode-help').textContent = mode === 'tas' ? '离线回溯：固定种子可读取未来 RNG；理想模式控制出块。目标块搜索最短路线，得分搜索 H 步内最高分。预算不足只给候选。' : mode === 'exact' ? '完整枚举 H 步内随机分支。预算不足时不提供最优结论。推荐小棋盘和浅层分析。' : mode === 'rollout' ? '固定贪心后续策略的模拟估计；CUDA 适合较大批量。建议步数 16–64。' : '限时搜索 + 启发式评分。建议动作属于近似决策。';
+  el('mode-help').textContent = mode === 'tas' ? '离线回溯：固定种子可读取未来 RNG；理想模式控制出块。目标块搜索最短路线，得分搜索 H 步内最高分。预算不足只给候选。' : mode === 'exact' ? '完整枚举 H 步内随机分支。预算不足时不提供最优结论。推荐小棋盘和浅层分析。' : mode === 'rollout' ? '固定贪心后续策略的模拟估计；CUDA 适合较大批量。步数无 64 上限，轨迹可提前终局，时间预算在完整批次之间检查。' : '限时搜索 + 启发式评分。建议动作属于近似决策。';
   select('backend').disabled = mode !== 'rollout'; input('trajectories').disabled = mode !== 'rollout';
   render();
 };

@@ -22,7 +22,7 @@ class CudaEngine:
         result = cp.empty((len(directions), count), dtype=cp.float64)
         begin, end = cp.cuda.Event(), cp.cuda.Event()
         begin.record()
-        self.kernel(((result.size + 127) // 128,), (128,), (b, np.int32(n), dirs, np.int32(len(directions)), np.int32(offset), np.int32(count), np.uint32(seed), np.int32(horizon), np.int32(objective), np.int32(target), result))
+        self.kernel(((result.size + 127) // 128,), (128,), (b, np.int32(n), dirs, np.int32(len(directions)), np.int32(offset), np.int32(count), np.uint32(seed), np.uint64(horizon), np.int32(objective), np.int32(target), result))
         end.record(); end.synchronize()
         self.last_kernel_ms = cp.cuda.get_elapsed_time(begin, end)
         return cp.asnumpy(result)

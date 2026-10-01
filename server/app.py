@@ -46,7 +46,7 @@ class SolveRequest(BaseModel):
     objective: Literal['score', 'target'] = 'score'
     target: int = Field(default=2048, ge=2, le=2 ** 30)
     budgetMs: int = Field(default=200, ge=1, le=10000)
-    horizon: int = Field(default=32, ge=1, le=64)
+    horizon: int = Field(default=32, ge=1, le=2 ** 53 - 1)
     trajectories: int = Field(default=128, ge=1, le=65536)
     seed: int = Field(default=12345, ge=1, le=4294967295)
     requestId: str = Field(default='', max_length=100)

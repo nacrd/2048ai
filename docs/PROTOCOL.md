@@ -12,7 +12,7 @@
 {"board":[[2,2],[0,4]],"algorithm":"rollout","backend":"cuda","objective":"target","target":16,"budgetMs":200,"horizon":16,"trajectories":256,"seed":71231,"requestId":"12"}
 ```
 
-仅支持 rollout；backend 为 cuda/cpu，objective 为 score/target。最大 64 步、每方向 65536 条轨迹、10000 ms 预算。响应包含 direction、choices、algorithm、backend、complete、depth、nodes、elapsedMs、kernelMs、requestId、note。每个 choice 包含 direction、value、samples，目标模式另有 95% Wilson 区间 confidence。
+仅支持 rollout；backend 为 cuda/cpu，objective 为 score/target。horizon 为正的安全整数（≤2⁵³−1），没有 64 步业务上限；CUDA 参数和循环计数为无符号 64 位整数。每方向最多 65536 条轨迹、10000 ms 预算。响应包含 direction、choices、algorithm、backend、complete、depth、nodes、elapsedMs、kernelMs、requestId、note。每个 choice 包含 direction、value、samples，目标模式另有 95% Wilson 区间 confidence。
 
 score 模拟值为 H 步累计新增合并分数；target 模拟值为 H 步内达到目标的样本比例。后续策略使用同一固定启发式贪心算法；它们是该策略的估计，不是最优策略的胜率。每个方向使用独立派生种子，轨迹编号在批次间连续。
 
@@ -26,7 +26,7 @@ Expectimax 为迭代加深的启发式搜索，保留最后一个完整搜索层
 
 ## TAS 协议
 
-独立 Worker 接收 `{id,snapshot,options}`。snapshot 包含完整起点和真实 rngState。options 为 `{mode:"fixed"|"ideal",objective:"score"|"target",target,horizon,budgetMs,maxNodes}`。界面 H=1–64、最大预算 30000 ms、maxNodes=300000。取消销毁 Worker 并使版本失效。
+独立 Worker 接收 `{id,snapshot,options}`。snapshot 包含完整起点和真实 rngState。options 为 `{mode:"fixed"|"ideal",objective:"score"|"target",target,horizon,budgetMs,maxNodes}`。H 是正的安全整数，没有 64 步上限；界面最大预算 30000 ms、maxNodes=300000。取消销毁 Worker 并使版本失效。TAS 回溯和 CPU 概率树求值都使用显式栈，不依赖递归调用深度。
 
 固定模式复用 session.advance，动作记录实际出块。理想模式展开每个合法动作后全部空位及值 2/4，动作和出块节点都取最大收益，不进行概率平均；执行时 RNG 保持不变。普通玩法从理想路线结束后的棋盘及保留的 RNG 继续随机游玩。
 

@@ -71,18 +71,20 @@ export function planTas(start: Snapshot, options: TasOptions): TasPlan {
     else {
       const search = (limit: number): boolean => {
         const seen = new Map<string, number>();
-        const visit = (n: Node): boolean => {
+        const stack = [root];
+        while (stack.length) {
+          const n = stack.pop()!;
           check(); consider(n);
           if (o.objective === 'target' && reached(n.snapshot.board, o.target)) return true;
-          if (n.depth === limit) return false;
+          if (n.depth === limit) continue;
           const key = `${limit - n.depth}:${n.snapshot.rngState}:${n.snapshot.board.cells.join(',')}`;
           const score = seen.get(key);
-          if (score !== undefined && (o.objective === 'target' || score >= n.snapshot.score)) return false;
+          if (score !== undefined && (o.objective === 'target' || score >= n.snapshot.score)) continue;
           seen.set(key, n.snapshot.score);
-          for (const child of children(n)) if (visit(child) && o.objective === 'target') return true;
-          return false;
-        };
-        return visit(root);
+          const next = children(n);
+          for (let i = next.length - 1; i >= 0; i--) stack.push(next[i]);
+        }
+        return false;
       };
       if (o.objective === 'score') { search(o.horizon); provenDepth = o.horizon; complete = true; }
       else for (let h = 1; h <= o.horizon; h++) {
@@ -97,7 +99,7 @@ export function planTas(start: Snapshot, options: TasOptions): TasPlan {
   return { options: o, frames: path.map(n => cloneSnapshot(n.snapshot)), actions: path.slice(1).map(n => n.action!), complete, provenDepth, nodes, elapsedMs: performance.now() - began, note };
 }
 function validateOptions(o: TasOptions) {
-  if (!o || !['fixed', 'ideal'].includes(o.mode) || !['score', 'target'].includes(o.objective) || !Number.isInteger(o.horizon) || o.horizon < 1 || o.horizon > 64 || !Number.isFinite(o.budgetMs) || o.budgetMs < 1 || o.budgetMs > 60000 || !Number.isInteger(o.maxNodes) || o.maxNodes < 1 || o.maxNodes > 1000000 || !Number.isInteger(Math.log2(o.target)) || o.target < 2 || o.target > 2 ** 30) throw new Error('TAS 参数不合法');
+  if (!o || !['fixed', 'ideal'].includes(o.mode) || !['score', 'target'].includes(o.objective) || !Number.isSafeInteger(o.horizon) || o.horizon < 1 || !Number.isFinite(o.budgetMs) || o.budgetMs < 1 || o.budgetMs > 60000 || !Number.isInteger(o.maxNodes) || o.maxNodes < 1 || o.maxNodes > 1000000 || !Number.isInteger(Math.log2(o.target)) || o.target < 2 || o.target > 2 ** 30) throw new Error('TAS 参数不合法');
 }
 export function exportTas(plan: TasPlan): string {
   return JSON.stringify({ version: 1, type: '2048-tas', start: JSON.parse(encode(plan.frames[0])), options: plan.options, actions: plan.actions }, null, 2);
