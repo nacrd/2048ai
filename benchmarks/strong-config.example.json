@@ -1,0 +1,15 @@
+{
+  "adaptive": true,
+  "stage": true,
+  "risk": true,
+  "channels": true,
+  "symmetry": true,
+  "reuseCache": true,
+  "rootParallel": true,
+  "chanceCutoff": 0,
+  "cacheEntries": 100000,
+  "openingDepth": 3,
+  "middleDepth": 5,
+  "endgameDepth": 7,
+  "clearGap": 0.025
+}

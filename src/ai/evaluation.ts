@@ -1,7 +1,7 @@
 import { applyMove, emptyCells, type Board, type Direction } from '../core/engine';
 
 const paths = new Map<number, number[][]>();
-function snakePaths(n: number) {
+export function snakePaths(n: number) {
   let result = paths.get(n);
   if (!result) {
     result = Array.from({ length: 8 }, (_, orientation) => Array.from({ length: n * n }, (_, rank) => {

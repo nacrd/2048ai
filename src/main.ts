@@ -3,6 +3,7 @@ import { ARROWS, DIRECTIONS, fromMatrix, hashSeed, matrix, maxTile, newBoard, re
 import { advance, cloneSnapshot, decode, encode, terminal, type Snapshot } from './core/session';
 import { DEFAULT_OPTIONS, type Options, type SolveResult } from './ai/solver';
 import { RolloutPool } from './ai/rollout-pool';
+import { StrongPool } from './ai/strong-pool';
 import { exportTas, importTas, sameSnapshot, tasAdvance, type TasOptions, type TasPlan } from './ai/tas';
 
 const el = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -16,6 +17,7 @@ let state: Snapshot, version = 0, running = false, busy = false, timer: ReturnTy
 let worker: Worker | null = null, controller: AbortController | null = null;
 const idleWorkers: Partial<Record<'cpu' | 'tas', Worker>> = {};
 const rolloutPool = new RolloutPool();
+const strongPool = new StrongPool();
 let pendingReject: ((error: Error) => void) | null = null;
 interface Device { available: boolean; name?: string; reason?: string; autoThreshold?: { size: number; minHorizon: number; minTrajectories: number } | null }
 let device: Device = { available: false };
@@ -42,7 +44,7 @@ function clearAnalysis() {
 }
 function cancel() {
   running = false; busy = false; version++; clearTimeout(timer); document.body.dataset.running = 'false';
-  worker?.terminate(); worker = null; rolloutPool.cancel(); controller?.abort(); controller = null;
+  worker?.terminate(); worker = null; rolloutPool.cancel(); strongPool.cancel(); controller?.abort(); controller = null;
   pendingReject?.(new Error('已取消')); pendingReject = null; updateButtons();
 }
 function updateButtons() {
@@ -106,7 +108,8 @@ function options(): Options {
   if (!Number.isSafeInteger(horizon) || horizon < 1) throw new Error('搜索 / 模拟步数必须为正的安全整数');
   if (!Number.isInteger(trajectories) || trajectories < 1 || trajectories > 65536) throw new Error('每方向模拟数必须为 1–65536');
   if (!Number.isFinite(interval) || interval < 0 || interval > 5000) throw new Error('移动间隔必须为 0–5000 ms');
-  return { ...DEFAULT_OPTIONS, maxNodes, algorithm: select('algorithm').value as Options['algorithm'], objective: select('objective').value as Options['objective'], target: readTarget(), budgetMs: Number(select('budget').value), horizon, trajectories, seed: hashSeed('analysis-independent') };
+  return { ...DEFAULT_OPTIONS, maxNodes, algorithm: select('algorithm').value as Options['algorithm'], objective: select('objective').value as Options['objective'], target: readTarget(), budgetMs: Number(select('budget').value), horizon, trajectories, seed: hashSeed('analysis-independent'), continueAfterTarget: input('continue').checked,
+    strong: { adaptive: input('strong-adaptive').checked, rootParallel: input('strong-parallel').checked, risk: input('strong-risk').checked, channels: input('strong-channels').checked, chanceCutoff: Number(input('strong-cutoff').value) } };
 }
 function canPlay() { return !terminal(state.board) && (input('continue').checked || !reached(state.board, state.target)); }
 function move(direction: Direction, manual = false) {
@@ -139,6 +142,11 @@ function workerRequest<T>(kind: 'cpu' | 'tas', payload: object, id: number, prog
   });
 }
 async function cpu(board: Board, o: Options, id: number): Promise<SolveResult> {
+  if (o.algorithm === 'strong' && o.strong?.rootParallel !== false && strongPool.size > 1 && o.budgetMs >= 200) {
+    const result = await strongPool.solve(board, o);
+    if (id !== version) throw new Error('已取消');
+    return result;
+  }
   if (o.algorithm === 'rollout' && rolloutPool.size > 1 && o.trajectories >= 128 && o.budgetMs >= 200) {
     const result = await rolloutPool.solve(board, o);
     if (id !== version) throw new Error('已取消');
@@ -165,15 +173,17 @@ async function compute(board: Board, o: Options, id: number): Promise<SolveResul
 }
 function showResult(result: SolveResult) {
   el('backend-badge').textContent = result.backend.toUpperCase(); el('recommendation').textContent = result.direction === null ? '—' : ARROWS[result.direction];
-  el('analysis-meta').textContent = `${result.backend.toUpperCase()} · ${result.elapsedMs.toFixed(1)} ms · ${result.algorithm === 'rollout' ? `模拟 ${result.depth} 步` : `完成深度 ${result.depth}`} · ${result.nodes.toLocaleString()} ${result.algorithm === 'rollout' ? '模拟步预算' : '节点'}${result.complete ? ' · 已完成' : ' · 触及预算'}`;
+  el('analysis-meta').textContent = `${result.backend.toUpperCase()} · ${result.elapsedMs.toFixed(1)} ms · ${result.algorithm === 'rollout' ? `模拟 ${result.depth} 步` : `完成深度 ${result.depth}`} · ${result.nodes.toLocaleString()} ${result.algorithm === 'rollout' ? '模拟步预算' : '节点'}${result.complete ? ' · 已完成' : ` · ${result.strongStats?.stopReason ?? '触及预算'}`}`;
   el('analysis-note').textContent = result.note + (result.workers ? `；CPU ${result.workers} 路并行` : '');
-  const probability = select('objective').value === 'target' && result.algorithm !== 'expectimax';
-  el('value-heading').textContent = probability ? '达标概率' : result.algorithm === 'expectimax' ? '启发式估值' : '期望新增分';
+  const probability = select('objective').value === 'target' && ['exact', 'rollout'].includes(result.algorithm);
+  el('value-heading').textContent = probability ? '达标概率' : ['expectimax', 'strong'].includes(result.algorithm) ? '启发式估值' : '期望新增分';
+  el('stats-heading').textContent = result.algorithm === 'strong' ? '下一次出块即死风险' : '样本 / 95% 区间';
   el('choices').replaceChildren();
   for (const d of DIRECTIONS) {
     const c = result.choices.find(x => x.direction === d), tr = document.createElement('tr'); if (d === result.direction) tr.className = 'best-choice';
-    const value = c ? probability ? `${(c.value * 100).toFixed(2)}%` : c.value.toFixed(2) : result.algorithm === 'exact' && !result.complete ? '未完成' : '不可用';
-    const stats = c?.confidence ? `${c.samples} / ${(c.confidence[0] * 100).toFixed(1)}–${(c.confidence[1] * 100).toFixed(1)}%` : String(c?.samples ?? '—');
+    const value = c ? probability ? `${(c.value * 100).toFixed(2)}%` : c.value.toFixed(result.algorithm === 'strong' ? 4 : 2) : result.algorithm === 'exact' && !result.complete ? '未完成' : '不可用';
+    const risk = result.strongStats?.rootRisks.find(r => r.direction === d);
+    const stats = risk ? `${(risk.deadProbability * 100).toFixed(2)}%` : c?.confidence ? `${c.samples} / ${(c.confidence[0] * 100).toFixed(1)}–${(c.confidence[1] * 100).toFixed(1)}%` : String(c?.samples ?? '—');
     tr.innerHTML = `<td>${ARROWS[d]}${d === result.direction ? ' 建议' : ''}</td><td>${value}</td><td>${stats}</td>`; el('choices').append(tr);
   }
 }
@@ -276,11 +286,12 @@ el('export').onclick = () => {
 input('file').onchange = async () => { const file = input('file').files?.[0]; if (file) { if (file.size > 20 * 1024 * 1024) notify('存档文件不能超过 20 MB', true); else importText(await file.text()); } input('file').value = ''; };
 input('timeline').oninput = () => { cancel(); tasPreview = null; replay = Number(input('timeline').value); clearAnalysis(); showTas(); render(); };
 el('live').onclick = () => { cancel(); tasPreview = null; replay = null; showTas(); render(); };
-for (const id of ['algorithm', 'backend', 'objective', 'budget', 'horizon', 'nodes', 'trajectories', 'interval', 'continue', 'tas-search', 'tas-width']) el(id).onchange = () => {
+for (const id of ['algorithm', 'backend', 'objective', 'budget', 'horizon', 'nodes', 'trajectories', 'interval', 'continue', 'tas-search', 'tas-width', 'strong-adaptive', 'strong-parallel', 'strong-risk', 'strong-channels', 'strong-cutoff']) el(id).onchange = () => {
   cancel(); if (!['interval', 'continue'].includes(id)) resetTas(); clearAnalysis(); const mode = select('algorithm').value;
   el('tas-panel').hidden = mode !== 'tas';
+  el('strong-panel').hidden = mode !== 'strong';
   if (mode !== 'tas' && Number(select('budget').value) > 5000) select('budget').value = '5000';
-  el('mode-help').textContent = mode === 'tas' ? '混合搜索先生成候选，再尝试证明；束搜索适合长路线，完整回溯用于最优性证明。固定种子读取未来 RNG，理想模式控制出块。' : mode === 'exact' ? '完整枚举 H 步内随机分支。预算不足时不提供最优结论。推荐小棋盘和浅层分析。' : mode === 'rollout' ? '增强贪心后续策略的模拟估计；CUDA 适合较大批量。无成功样本时按局面评分择优。时间预算在完整批次间检查。' : '限时搜索 + 多方向结构评分。建议动作属于近似决策。';
+  el('mode-help').textContent = mode === 'strong' ? '阶段与风险评分、自适应加深。步数是搜索上限；候选均按相同完整深度比较。勾选继续游玩时，达标后推进下一目标。' : mode === 'tas' ? '混合搜索先生成候选，再尝试证明；束搜索适合长路线，完整回溯用于最优性证明。固定种子读取未来 RNG，理想模式控制出块。' : mode === 'exact' ? '完整枚举 H 步内随机分支。预算不足时不提供最优结论。推荐小棋盘和浅层分析。' : mode === 'rollout' ? '增强贪心后续策略的模拟估计；CUDA 适合较大批量。无成功样本时按局面评分择优。时间预算在完整批次间检查。' : '限时搜索 + 多方向结构评分。建议动作属于近似决策。';
   select('backend').disabled = mode !== 'rollout'; input('trajectories').disabled = mode !== 'rollout';
   render();
 };
@@ -304,7 +315,7 @@ el('tas-import').onclick = () => {
     const result = importTas(el<HTMLTextAreaElement>('tas-json').value); load(result.frames[0]); tas = result;
     select('algorithm').value = 'tas'; select('tas-mode').value = result.options.mode; select('objective').value = result.options.objective; input('horizon').value = String(result.options.horizon);
     select('tas-search').value = result.options.strategy ?? 'exact'; input('tas-width').value = String(result.options.beamWidth ?? 128); input('nodes').value = String(result.options.maxNodes);
-    el('tas-panel').hidden = false; select('backend').disabled = true; input('trajectories').disabled = true;
+    el('tas-panel').hidden = false; el('strong-panel').hidden = true; select('backend').disabled = true; input('trajectories').disabled = true;
     el('tas-rules').textContent = result.options.mode === 'ideal' ? '已加载理想出块路线：出块受控，不消耗游戏 RNG。' : '已加载固定种子路线：提前计算出块。';
     showTas(); render(); notify(result.note);
   } catch (e) { notify((e as Error).message, true); }

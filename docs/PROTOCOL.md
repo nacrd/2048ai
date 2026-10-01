@@ -28,6 +28,12 @@ score 模拟值为 H 步累计新增合并分数；target 模拟值为 H 步内�
 
 Expectimax 为迭代加深的启发式搜索，保留最后一个完整搜索层；深度 0 表示只提供合法动作的启发式回退。其 value 是综合评分，不能解释为期望真实得分或概率。
 
+Strong 新增 `algorithm:"strong"`，只用 CPU。options 可含 `continueAfterTarget` 与 `strong` 调参对象，具体字段见 [P0/P1 指南](WIN_RATE_GUIDE.md)。阶段/风险/通道评分只影响新模式，原有算法与 TAS 的定义保持不变。target 的未达标叶子值低于1、达标值为1，没有概率校准；score 的叶子为归一化启发式，加上缩放合并奖赏。两者均返回 `valueKind:"heuristic"` 和 `policyVersion:"strong-p1-v1"`，不解释为概率或真实分数。
+
+Strong 按请求总预算迭代加深，仅使用全根共同完成的层；`complete` 表示已达到输入深度上限或无合法根，不是全局最优证明。自适应停止也可能 complete=false，以 `strongStats.stopReason` 区分。stats 含 profile、cacheHits、cacheEntries、prunedEdges、rootRisks；deadProbability 为下一次随机出块即无合法动作的精确枚举值，mobility 为期望剩余空位数。缓存仅保存完成子树，按值的 D4 对称性归并；不缓存原坐标动作。reuseCache 控制跨根/请求缓存保留，容量上限默认每 Worker 100000 条。
+
+并行 Worker 消息可含 `strong:{prepare:true}` 或 `strong:{direction,depth,deadline}`；deadline 是统一的 Unix 毫秒时间，在 Worker 内转换为剩余 performance 预算。主线程公平分配每根节点配额，回收未用额度一次，保留相同深度的完整结果；总访问节点不超配置。取消与既有版本隔离相同。并行 stats.cacheEntries 报最近根任务观测到的最大单 Worker 缓存条数，非共享缓存总量。阈值>0会以叶子值替代低概率出块边并保留权重，prunedEdges 为替代边的访问次数。
+
 预算是软上限：CPU 搜索周期检查、CPU rollout 完成一轮、CUDA 完成一个批次后检查。首次编译/Worker 启动/排队可能超过预算，不能保证硬实时。界面耗时包含浏览器到结果的开销；服务 elapsedMs 包含排队、计算、拷贝和统计，kernelMs 单独记录。nodes 在 rollout 模式是轨迹数×H 的步数预算，并非实际完成步数。
 
 存档格式：version=1、rules=classic-90-10、board（矩阵）、score、rngState、target、moves，可选 history 记录历史快照。自动存档只保存当前状态；导出文件包含本次会话回放。撤销恢复分数和 RNG。输入 seed 用于新游戏；普通 AI 不读取未来 RNG，TAS 固定种子模式允许读取。

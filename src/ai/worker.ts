@@ -1,8 +1,12 @@
 import { rolloutSlice, solve } from './solver';
+import { strongFallback, strongRoot } from './strong';
 self.onmessage = (event) => {
-  const { id, board, options, batch } = event.data;
+  const { id, board, options, batch, strong } = event.data;
   try {
-    if (batch) {
+    if (strong) {
+      const result = strong.prepare ? strongFallback(board, options) : strongRoot(board, options, strong.direction, strong.depth, performance.now() + Math.max(0, strong.deadline - Date.now()));
+      self.postMessage({ id, result });
+    } else if (batch) {
       const result = rolloutSlice(board, options, batch.offset, batch.count, batch.includeTies);
       self.postMessage({ id, result }, { transfer: [result.values.buffer] });
     } else self.postMessage({ id, result: solve(board, options) });

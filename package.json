@@ -5,6 +5,7 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "bench": "tsx benchmarks/cpu.ts",
+    "bench:ab": "tsx benchmarks/winrate.ts",
     "continue": "tsx scripts/continue.ts",
     "preview": "vite preview --host 127.0.0.1"
   },

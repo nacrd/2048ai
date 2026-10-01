@@ -17,7 +17,7 @@
 <aside class="settings">
 <section class="panel"><div class="panel-heading"><h2>决策设置</h2><span id="backend-badge" class="badge">CPU</span></div>
 <div class="field-grid">
-<label>算法<select id="algorithm"><option value="expectimax">Expectimax · 实时搜索</option><option value="rollout">Rollout · 批量模拟</option><option value="exact">有限步精确搜索</option><option value="tas">TAS · 离线路线规划</option></select></label>
+<label>算法<select id="algorithm"><option value="expectimax">Expectimax · 实时搜索</option><option value="strong">强力 · 阶段与风险搜索</option><option value="rollout">Rollout · 批量模拟</option><option value="exact">有限步精确搜索</option><option value="tas">TAS · 离线路线规划</option></select></label>
 <label>计算后端<select id="backend"><option value="auto">自动选择</option><option value="cpu">CPU</option><option value="cuda">CUDA（模拟模式）</option></select></label>
 <label>求解目标<select id="objective"><option value="score">提高得分</option><option value="target">达到目标块</option></select></label>
 <label>目标块<input id="target" type="number" min="2" value="2048" step="2048"></label>
@@ -29,6 +29,13 @@
 </div>
 <label class="check"><input id="continue" type="checkbox" checked>达到目标后继续游玩</label>
 <p id="mode-help" class="hint">限时搜索 + 启发式评分。建议动作属于近似决策。</p></section>
+<section id="strong-panel" class="panel" hidden><h2>强力搜索</h2>
+<label class="check"><input id="strong-adaptive" type="checkbox" checked>候选明确时提前停止加深</label>
+<label class="check"><input id="strong-parallel" type="checkbox" checked>多核并行比较方向</label>
+<label class="check"><input id="strong-risk" type="checkbox" checked>空位与活动区域风险评分</label>
+<label class="check"><input id="strong-channels" type="checkbox" checked>合并通道与蛇形中断评分</label>
+<label>低概率分支近似阈值<input id="strong-cutoff" type="number" min="0" max="0.02" step="0.001" value="0"></label>
+<p class="hint">0 完整展开出块；大于 0 用叶子估值替代低概率分支。仅影响强力模式。评分权重尚待胜率对比确认。</p></section>
 <section id="tas-panel" class="panel" hidden><div class="panel-heading"><h2>TAS 路线工作台</h2><span class="badge">CPU · 离线搜索</span></div>
 <label>出块条件<select id="tas-mode"><option value="fixed">固定种子 · 提前计算出块</option><option value="ideal">理想出块 · 搜索位置与 2 / 4</option></select></label>
 <div class="field-grid"><label>路线搜索<select id="tas-search"><option value="hybrid">混合 · 先找路线再证明</option><option value="beam">束搜索 · 长路线候选</option><option value="exact">完整回溯 · 最优性证明</option></select></label><label>束宽<input id="tas-width" type="number" min="1" max="4096" value="128"></label></div>
@@ -39,7 +46,7 @@
 <ol id="tas-actions" class="tas-actions"></ol>
 <details><summary>TAS 路线导入 / 导出</summary><textarea id="tas-json" rows="5" spellcheck="false" aria-label="TAS 路线 JSON"></textarea><div class="button-row"><button id="tas-export" class="secondary">导出路线</button><button id="tas-import" class="secondary">加载路线文本</button></div><p class="hint">路线包含起点、随机状态、动作与每步出块。加载会恢复路线起点。</p></details>
 </section>
-<section class="panel analysis-panel"><div class="panel-heading"><h2>当前决策</h2><span id="recommendation">—</span></div><p id="analysis-meta" class="hint">点击「只分析」查看四方向比较。</p><table><thead><tr><th>方向</th><th id="value-heading">估值</th><th>样本 / 95% 区间</th></tr></thead><tbody id="choices"></tbody></table><p id="analysis-note" class="hint">经典规则：随机空位生成 2（90%）或 4（10%）。</p></section>
+<section class="panel analysis-panel"><div class="panel-heading"><h2>当前决策</h2><span id="recommendation">—</span></div><p id="analysis-meta" class="hint">点击「只分析」查看四方向比较。</p><table><thead><tr><th>方向</th><th id="value-heading">估值</th><th id="stats-heading">样本 / 95% 区间</th></tr></thead><tbody id="choices"></tbody></table><p id="analysis-note" class="hint">经典规则：随机空位生成 2（90%）或 4（10%）。</p></section>
 <section class="panel"><div class="panel-heading"><h2>棋盘与存档</h2><button id="edit" class="text-button">编辑棋盘</button></div>
 <div class="field-grid"><label>棋盘尺寸<select id="size"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option></select></label><label>游戏随机种子<input id="seed" value="2048-ai" maxlength="100"></label></div>
 <div id="editor-section" hidden><p class="hint">0 为空格，其余为 2 的幂。加载不会添加初始块。</p><div id="editor" class="editor"></div><div class="button-row"><button id="apply-editor">应用棋盘</button><button id="clear-editor" class="secondary">清空</button><button id="cancel-editor" class="text-button">取消编辑</button></div></div>

@@ -94,6 +94,10 @@ fixed 保留原 RNG，ideal 只按已记录的合法 2/4 出块。每步核对�
 
 ## 验证与评测
 
+新增「强力 · 阶段与风险搜索」：自适应加深、阶段/空位风险、大块合并通道、对称有界缓存及 CPU 根方向并行。刷新页面后在算法中选择；旧模式仍可用。强力值是启发式估值，分析面板单列下一次出块即死风险。权重与实际胜率需要使用者评测，P2学习模型及GPU学习策略尚未接入。
+
+成对旧版/新版质量对照：`npm run bench:ab -- --games 10 --split tuning --budget-mode nodes --nodes 10000 --horizon 4`。工具冻结并执行 `3c0a2c4` 的旧代码，保留随机流、失败轨迹与独立输出，区分终局/截断/异常；Node仅测串行CPU。[完整使用与口径](docs/WIN_RATE_GUIDE.md) · [全面胜率方案](docs/WIN_RATE_PLAN.md)。
+
 ```powershell
 npm run build
 npm test
