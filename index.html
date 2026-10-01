@@ -1,99 +1,48 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>2048</title>
-
-  <link href="style/main.css" rel="stylesheet" type="text/css">
-  <link rel="shortcut icon" href="favicon.ico">
-  <link rel="apple-touch-icon" href="meta/apple-touch-icon.png">
-  <link rel="apple-touch-startup-image" href="meta/apple-touch-startup-image-640x1096.png" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)"> <!-- iPhone 5+ -->
-  <link rel="apple-touch-startup-image" href="meta/apple-touch-startup-image-640x920.png"  media="(device-width: 320px) and (device-height: 480px) and (-webkit-device-pixel-ratio: 2)"> <!-- iPhone, retina -->
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-
-  <meta name="HandheldFriendly" content="True">
-  <meta name="MobileOptimized" content="320">
-  <meta name="viewport" content="width=device-width, target-densitydpi=160dpi, initial-scale=1.0, maximum-scale=1, user-scalable=no, minimal-ui">
-</head>
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#faf8ef"><link rel="icon" href="/favicon.ico"><title>2048 AI · 棋盘实验室</title></head>
 <body>
-  <div class="container">
-    <div class="heading">
-      <h1 class="title">2048</h1>
-      <div class="scores-container">
-        <div class="score-container">0</div>
-        <div class="best-container">0</div>
-      </div>
-    </div>
-
-    <div class="above-game">
-      <p class="game-intro">Join the numbers and get to the <strong>2048 tile!</strong></p>
-      <a class="restart-button">New Game</a>
-    </div>
-
-    <div class="game-container">
-      <div class="game-message">
-        <p></p>
-        <div class="lower">
-	        <a class="keep-playing-button">Keep going</a>
-          <a class="retry-button">Try again</a>
-        </div>
-      </div>
-
-      <div class="grid-container">
-        <div class="grid-row">
-          <div class="grid-cell"></div>
-          <div class="grid-cell"></div>
-          <div class="grid-cell"></div>
-          <div class="grid-cell"></div>
-        </div>
-        <div class="grid-row">
-          <div class="grid-cell"></div>
-          <div class="grid-cell"></div>
-          <div class="grid-cell"></div>
-          <div class="grid-cell"></div>
-        </div>
-        <div class="grid-row">
-          <div class="grid-cell"></div>
-          <div class="grid-cell"></div>
-          <div class="grid-cell"></div>
-          <div class="grid-cell"></div>
-        </div>
-        <div class="grid-row">
-          <div class="grid-cell"></div>
-          <div class="grid-cell"></div>
-          <div class="grid-cell"></div>
-          <div class="grid-cell"></div>
-        </div>
-      </div>
-
-      <div class="tile-container">
-
-      </div>
-    </div>
-
-    <p class="game-explanation">
-      <strong class="important">How to play:</strong> Use your <strong>arrow keys</strong> to move the tiles. When two tiles with the same number touch, they <strong>merge into one!</strong>
-    </p>
-    <hr>
-    <p>
-    <strong class="important">Note:</strong> This site is the official version of 2048. You can play it on your phone via <a href="http://git.io/2048">http://git.io/2048.</a> All other apps or sites are derivatives or fakes, and should be used with caution.
-    </p>
-    <hr>
-    <p>
-    Created by <a href="http://gabrielecirulli.com" target="_blank">Gabriele Cirulli.</a> Based on <a href="https://itunes.apple.com/us/app/1024!/id823499224" target="_blank">1024 by Veewo Studio</a> and conceptually similar to <a href="http://asherv.com/threes/" target="_blank">Threes by Asher Vollmer.</a>
-    </p>
-  </div>
-
-  <script src="js/bind_polyfill.js"></script>
-  <script src="js/classlist_polyfill.js"></script>
-  <script src="js/animframe_polyfill.js"></script>
-  <script src="js/keyboard_input_manager.js"></script>
-  <script src="js/html_actuator.js"></script>
-  <script src="js/grid.js"></script>
-  <script src="js/tile.js"></script>
-  <script src="js/local_storage_manager.js"></script>
-  <script src="js/game_manager.js"></script>
-  <script src="js/application.js"></script>
-</body>
-</html>
+<main class="workspace">
+<header class="page-header"><div><div class="eyebrow">PLAY · EXPLORE · SOLVE</div><h1>2048 <span>AI</span></h1><p>让每一步都有依据。</p></div><div class="header-note"><span class="device-dot"></span><span id="device-status">浏览器 CPU 就绪</span><button id="detect" class="text-button">检测 CUDA</button></div></header>
+<div class="columns">
+<section class="game-section" aria-label="2048 游戏">
+<div class="score-row"><div><small>得分</small><strong id="score">0</strong></div><div><small>最佳</small><strong id="best">0</strong></div><div><small>最大方块</small><strong id="max">0</strong></div><div><small>步数</small><strong id="moves">0</strong></div></div>
+<div class="game-toolbar"><span id="game-status">准备就绪</span><div><button id="undo" class="secondary">撤销</button><button id="new-game">新游戏</button></div></div>
+<div id="board" class="board" role="group" aria-label="游戏棋盘" tabindex="0"><div id="background" class="background"></div><div id="tiles" class="tiles"></div></div>
+<div class="play-controls"><button id="start" class="primary">开始自动游玩</button><button id="pause" class="secondary">暂停</button><button id="step" class="secondary">AI 单步</button><button id="analyze" class="secondary">只分析</button></div>
+<p class="hint">方向键 / WASD 移动 · 触屏滑动 · 手动操作会暂停 AI</p>
+<div class="replay-panel"><div class="label-row"><label for="timeline">回放</label><span id="replay-label">当前局面</span></div><input id="timeline" type="range" min="0" max="0" value="0" aria-label="回放步数"><button id="live" class="text-button">返回当前局面</button></div>
+<div id="notice" role="status" aria-live="polite">设置棋盘，或者直接让 AI 开始游玩。</div>
+</section>
+<aside class="settings">
+<section class="panel"><div class="panel-heading"><h2>决策设置</h2><span id="backend-badge" class="badge">CPU</span></div>
+<div class="field-grid">
+<label>算法<select id="algorithm"><option value="expectimax">Expectimax · 实时搜索</option><option value="rollout">Rollout · 批量模拟</option><option value="exact">有限步精确搜索</option><option value="tas">TAS · 离线路线规划</option></select></label>
+<label>计算后端<select id="backend"><option value="auto">自动选择</option><option value="cpu">CPU</option><option value="cuda">CUDA（模拟模式）</option></select></label>
+<label>求解目标<select id="objective"><option value="score">提高得分</option><option value="target">达到目标块</option></select></label>
+<label>目标块<input id="target" type="number" min="2" value="2048" step="2048"></label>
+<label>计算预算<select id="budget"><option value="50">50 ms · 快速</option><option value="200" selected>200 ms · 平衡</option><option value="1000">1000 ms · 深入</option><option value="5000">5000 ms · 分析</option><option value="30000">30 s · TAS 规划</option></select></label>
+<label>搜索 / 模拟步数<input id="horizon" type="number" min="1" max="64" value="4"></label>
+<label>每方向模拟数<input id="trajectories" type="number" min="1" max="65536" value="128"></label>
+<label>移动间隔 (ms)<input id="interval" type="number" min="0" max="5000" value="180"></label>
+</div>
+<label class="check"><input id="continue" type="checkbox" checked>达到目标后继续游玩</label>
+<p id="mode-help" class="hint">限时搜索 + 启发式评分。建议动作属于近似决策。</p></section>
+<section id="tas-panel" class="panel" hidden><div class="panel-heading"><h2>TAS 路线工作台</h2><span class="badge">CPU · 离线搜索</span></div>
+<label>出块条件<select id="tas-mode"><option value="fixed">固定种子 · 提前计算出块</option><option value="ideal">理想出块 · 搜索位置与 2 / 4</option></select></label>
+<p id="tas-rules" class="hint">从当前棋盘及随机状态规划。目标块优先最少步数；得分优化指定步数以内的累计合并分。</p>
+<div class="button-row"><button id="tas-plan">规划路线</button><button id="tas-run" class="primary">执行路线</button><button id="tas-step" class="secondary">路线单步</button><button id="tas-restore" class="secondary">回到路线起点</button></div>
+<p id="tas-status" role="status" class="hint">尚未规划。时间预算作用于整条路线；搜索步数限制路线长度。</p>
+<div class="label-row"><label for="tas-timeline">路线预览（不修改当前局面）</label><span id="tas-position">0 / 0</span></div><input id="tas-timeline" type="range" min="0" max="0" value="0" aria-label="TAS 路线预览步数"><button id="tas-live" class="text-button">返回当前局面</button>
+<ol id="tas-actions" class="tas-actions"></ol>
+<details><summary>TAS 路线导入 / 导出</summary><textarea id="tas-json" rows="5" spellcheck="false" aria-label="TAS 路线 JSON"></textarea><div class="button-row"><button id="tas-export" class="secondary">导出路线</button><button id="tas-import" class="secondary">加载路线文本</button></div><p class="hint">路线包含起点、随机状态、动作与每步出块。加载会恢复路线起点。</p></details>
+</section>
+<section class="panel analysis-panel"><div class="panel-heading"><h2>当前决策</h2><span id="recommendation">—</span></div><p id="analysis-meta" class="hint">点击「只分析」查看四方向比较。</p><table><thead><tr><th>方向</th><th id="value-heading">估值</th><th>样本 / 95% 区间</th></tr></thead><tbody id="choices"></tbody></table><p id="analysis-note" class="hint">经典规则：随机空位生成 2（90%）或 4（10%）。</p></section>
+<section class="panel"><div class="panel-heading"><h2>棋盘与存档</h2><button id="edit" class="text-button">编辑棋盘</button></div>
+<div class="field-grid"><label>棋盘尺寸<select id="size"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option></select></label><label>游戏随机种子<input id="seed" value="2048-ai" maxlength="100"></label></div>
+<div id="editor-section" hidden><p class="hint">0 为空格，其余为 2 的幂。加载不会添加初始块。</p><div id="editor" class="editor"></div><div class="button-row"><button id="apply-editor">应用棋盘</button><button id="clear-editor" class="secondary">清空</button><button id="cancel-editor" class="text-button">取消编辑</button></div></div>
+<details><summary>矩阵 / JSON 导入导出</summary><label for="matrix">每行一行数字，或粘贴 JSON</label><textarea id="matrix" rows="5" spellcheck="false" placeholder="2 0 0 0&#10;2 4 0 0&#10;0 0 0 0&#10;0 0 0 0"></textarea><div class="button-row"><button id="import">加载文本</button><button id="export" class="secondary">导出存档</button><button id="export-matrix" class="text-button">显示当前矩阵</button></div><label class="file-label">导入存档文件<input id="file" type="file" accept=".json,application/json"></label></details></section>
+</aside></div>
+<footer>基于 <a href="https://github.com/gabrielecirulli/2048" target="_blank" rel="noreferrer">Gabriele Cirulli 的 2048</a> 二次开发 · MIT License <span>随机游戏，持续决策。</span></footer>
+</main><script type="module" src="/src/main.ts"></script>
+</body></html>

@@ -1,0 +1,758 @@
+{
+  "date": "2026-10-01",
+  "config": {
+    "algorithm": "expectimax",
+    "objective": "score",
+    "target": 2048,
+    "budgetMs": 10000,
+    "horizon": 3,
+    "trajectories": 128,
+    "seed": 3156543011,
+    "maxNodes": 10000
+  },
+  "games": 100,
+  "maxMoves": 5000,
+  "averageScore": 39185.96,
+  "medianScore": 36340,
+  "targetRates": [
+    {
+      "target": 2048,
+      "successes": 79,
+      "rate": 0.79,
+      "confidence95": [
+        0.7002003116591013,
+        0.858343459380847
+      ]
+    },
+    {
+      "target": 4096,
+      "successes": 26,
+      "rate": 0.26,
+      "confidence95": [
+        0.18404698464748132,
+        0.3537098944918718
+      ]
+    },
+    {
+      "target": 8192,
+      "successes": 0,
+      "rate": 0,
+      "confidence95": [
+        3.469446951953614e-18,
+        0.03699349820698568
+      ]
+    }
+  ],
+  "maxTileDistribution": {
+    "512": 1,
+    "1024": 20,
+    "2048": 53,
+    "4096": 26
+  },
+  "latencyMs": {
+    "p50": 5.095600000000559,
+    "p95": 6.869599999976344
+  },
+  "records": [
+    {
+      "seed": "validation-0",
+      "score": 31436,
+      "maxTile": 2048,
+      "moves": 1579,
+      "censored": false
+    },
+    {
+      "seed": "validation-1",
+      "score": 36556,
+      "maxTile": 2048,
+      "moves": 1900,
+      "censored": false
+    },
+    {
+      "seed": "validation-2",
+      "score": 26876,
+      "maxTile": 2048,
+      "moves": 1384,
+      "censored": false
+    },
+    {
+      "seed": "validation-3",
+      "score": 35928,
+      "maxTile": 2048,
+      "moves": 1842,
+      "censored": false
+    },
+    {
+      "seed": "validation-4",
+      "score": 34780,
+      "maxTile": 2048,
+      "moves": 1782,
+      "censored": false
+    },
+    {
+      "seed": "validation-5",
+      "score": 36936,
+      "maxTile": 2048,
+      "moves": 1937,
+      "censored": false
+    },
+    {
+      "seed": "validation-6",
+      "score": 26932,
+      "maxTile": 2048,
+      "moves": 1404,
+      "censored": false
+    },
+    {
+      "seed": "validation-7",
+      "score": 59372,
+      "maxTile": 4096,
+      "moves": 2762,
+      "censored": false
+    },
+    {
+      "seed": "validation-8",
+      "score": 14468,
+      "maxTile": 1024,
+      "moves": 833,
+      "censored": false
+    },
+    {
+      "seed": "validation-9",
+      "score": 60448,
+      "maxTile": 4096,
+      "moves": 2808,
+      "censored": false
+    },
+    {
+      "seed": "validation-10",
+      "score": 8504,
+      "maxTile": 512,
+      "moves": 570,
+      "censored": false
+    },
+    {
+      "seed": "validation-11",
+      "score": 28888,
+      "maxTile": 2048,
+      "moves": 1525,
+      "censored": false
+    },
+    {
+      "seed": "validation-12",
+      "score": 17228,
+      "maxTile": 1024,
+      "moves": 1036,
+      "censored": false
+    },
+    {
+      "seed": "validation-13",
+      "score": 50916,
+      "maxTile": 4096,
+      "moves": 2320,
+      "censored": false
+    },
+    {
+      "seed": "validation-14",
+      "score": 70172,
+      "maxTile": 4096,
+      "moves": 3201,
+      "censored": false
+    },
+    {
+      "seed": "validation-15",
+      "score": 36640,
+      "maxTile": 2048,
+      "moves": 1922,
+      "censored": false
+    },
+    {
+      "seed": "validation-16",
+      "score": 16900,
+      "maxTile": 1024,
+      "moves": 1018,
+      "censored": false
+    },
+    {
+      "seed": "validation-17",
+      "score": 36884,
+      "maxTile": 2048,
+      "moves": 1938,
+      "censored": false
+    },
+    {
+      "seed": "validation-18",
+      "score": 13164,
+      "maxTile": 1024,
+      "moves": 801,
+      "censored": false
+    },
+    {
+      "seed": "validation-19",
+      "score": 15856,
+      "maxTile": 1024,
+      "moves": 920,
+      "censored": false
+    },
+    {
+      "seed": "validation-20",
+      "score": 55112,
+      "maxTile": 4096,
+      "moves": 2503,
+      "censored": false
+    },
+    {
+      "seed": "validation-21",
+      "score": 76248,
+      "maxTile": 4096,
+      "moves": 3494,
+      "censored": false
+    },
+    {
+      "seed": "validation-22",
+      "score": 52152,
+      "maxTile": 4096,
+      "moves": 2392,
+      "censored": false
+    },
+    {
+      "seed": "validation-23",
+      "score": 36396,
+      "maxTile": 2048,
+      "moves": 1882,
+      "censored": false
+    },
+    {
+      "seed": "validation-24",
+      "score": 27636,
+      "maxTile": 2048,
+      "moves": 1451,
+      "censored": false
+    },
+    {
+      "seed": "validation-25",
+      "score": 37012,
+      "maxTile": 2048,
+      "moves": 1955,
+      "censored": false
+    },
+    {
+      "seed": "validation-26",
+      "score": 16200,
+      "maxTile": 1024,
+      "moves": 957,
+      "censored": false
+    },
+    {
+      "seed": "validation-27",
+      "score": 71616,
+      "maxTile": 4096,
+      "moves": 3293,
+      "censored": false
+    },
+    {
+      "seed": "validation-28",
+      "score": 38456,
+      "maxTile": 2048,
+      "moves": 1985,
+      "censored": false
+    },
+    {
+      "seed": "validation-29",
+      "score": 35908,
+      "maxTile": 2048,
+      "moves": 1837,
+      "censored": false
+    },
+    {
+      "seed": "validation-30",
+      "score": 60444,
+      "maxTile": 4096,
+      "moves": 2818,
+      "censored": false
+    },
+    {
+      "seed": "validation-31",
+      "score": 36888,
+      "maxTile": 2048,
+      "moves": 1920,
+      "censored": false
+    },
+    {
+      "seed": "validation-32",
+      "score": 70104,
+      "maxTile": 4096,
+      "moves": 3185,
+      "censored": false
+    },
+    {
+      "seed": "validation-33",
+      "score": 12536,
+      "maxTile": 1024,
+      "moves": 762,
+      "censored": false
+    },
+    {
+      "seed": "validation-34",
+      "score": 16768,
+      "maxTile": 1024,
+      "moves": 990,
+      "censored": false
+    },
+    {
+      "seed": "validation-35",
+      "score": 36340,
+      "maxTile": 2048,
+      "moves": 1879,
+      "censored": false
+    },
+    {
+      "seed": "validation-36",
+      "score": 36592,
+      "maxTile": 2048,
+      "moves": 1909,
+      "censored": false
+    },
+    {
+      "seed": "validation-37",
+      "score": 79992,
+      "maxTile": 4096,
+      "moves": 3698,
+      "censored": false
+    },
+    {
+      "seed": "validation-38",
+      "score": 27200,
+      "maxTile": 2048,
+      "moves": 1435,
+      "censored": false
+    },
+    {
+      "seed": "validation-39",
+      "score": 34824,
+      "maxTile": 2048,
+      "moves": 1801,
+      "censored": false
+    },
+    {
+      "seed": "validation-40",
+      "score": 60720,
+      "maxTile": 4096,
+      "moves": 2827,
+      "censored": false
+    },
+    {
+      "seed": "validation-41",
+      "score": 52232,
+      "maxTile": 4096,
+      "moves": 2407,
+      "censored": false
+    },
+    {
+      "seed": "validation-42",
+      "score": 69892,
+      "maxTile": 4096,
+      "moves": 3153,
+      "censored": false
+    },
+    {
+      "seed": "validation-43",
+      "score": 25532,
+      "maxTile": 2048,
+      "moves": 1314,
+      "censored": false
+    },
+    {
+      "seed": "validation-44",
+      "score": 36196,
+      "maxTile": 2048,
+      "moves": 1865,
+      "censored": false
+    },
+    {
+      "seed": "validation-45",
+      "score": 71544,
+      "maxTile": 4096,
+      "moves": 3272,
+      "censored": false
+    },
+    {
+      "seed": "validation-46",
+      "score": 60488,
+      "maxTile": 4096,
+      "moves": 2812,
+      "censored": false
+    },
+    {
+      "seed": "validation-47",
+      "score": 37284,
+      "maxTile": 2048,
+      "moves": 1970,
+      "censored": false
+    },
+    {
+      "seed": "validation-48",
+      "score": 34532,
+      "maxTile": 2048,
+      "moves": 1775,
+      "censored": false
+    },
+    {
+      "seed": "validation-49",
+      "score": 37152,
+      "maxTile": 2048,
+      "moves": 1937,
+      "censored": false
+    },
+    {
+      "seed": "validation-50",
+      "score": 35316,
+      "maxTile": 2048,
+      "moves": 1827,
+      "censored": false
+    },
+    {
+      "seed": "validation-51",
+      "score": 50484,
+      "maxTile": 2048,
+      "moves": 2452,
+      "censored": false
+    },
+    {
+      "seed": "validation-52",
+      "score": 36884,
+      "maxTile": 2048,
+      "moves": 1924,
+      "censored": false
+    },
+    {
+      "seed": "validation-53",
+      "score": 27616,
+      "maxTile": 2048,
+      "moves": 1459,
+      "censored": false
+    },
+    {
+      "seed": "validation-54",
+      "score": 18568,
+      "maxTile": 1024,
+      "moves": 1120,
+      "censored": false
+    },
+    {
+      "seed": "validation-55",
+      "score": 43604,
+      "maxTile": 2048,
+      "moves": 2144,
+      "censored": false
+    },
+    {
+      "seed": "validation-56",
+      "score": 36632,
+      "maxTile": 2048,
+      "moves": 1919,
+      "censored": false
+    },
+    {
+      "seed": "validation-57",
+      "score": 67716,
+      "maxTile": 4096,
+      "moves": 3057,
+      "censored": false
+    },
+    {
+      "seed": "validation-58",
+      "score": 34612,
+      "maxTile": 2048,
+      "moves": 1769,
+      "censored": false
+    },
+    {
+      "seed": "validation-59",
+      "score": 51884,
+      "maxTile": 2048,
+      "moves": 2550,
+      "censored": false
+    },
+    {
+      "seed": "validation-60",
+      "score": 16948,
+      "maxTile": 1024,
+      "moves": 1016,
+      "censored": false
+    },
+    {
+      "seed": "validation-61",
+      "score": 50600,
+      "maxTile": 2048,
+      "moves": 2469,
+      "censored": false
+    },
+    {
+      "seed": "validation-62",
+      "score": 62132,
+      "maxTile": 4096,
+      "moves": 2907,
+      "censored": false
+    },
+    {
+      "seed": "validation-63",
+      "score": 35424,
+      "maxTile": 2048,
+      "moves": 1826,
+      "censored": false
+    },
+    {
+      "seed": "validation-64",
+      "score": 17492,
+      "maxTile": 1024,
+      "moves": 1024,
+      "censored": false
+    },
+    {
+      "seed": "validation-65",
+      "score": 84004,
+      "maxTile": 4096,
+      "moves": 3954,
+      "censored": false
+    },
+    {
+      "seed": "validation-66",
+      "score": 61120,
+      "maxTile": 4096,
+      "moves": 2843,
+      "censored": false
+    },
+    {
+      "seed": "validation-67",
+      "score": 14764,
+      "maxTile": 1024,
+      "moves": 865,
+      "censored": false
+    },
+    {
+      "seed": "validation-68",
+      "score": 76636,
+      "maxTile": 4096,
+      "moves": 3489,
+      "censored": false
+    },
+    {
+      "seed": "validation-69",
+      "score": 58644,
+      "maxTile": 4096,
+      "moves": 2684,
+      "censored": false
+    },
+    {
+      "seed": "validation-70",
+      "score": 60808,
+      "maxTile": 4096,
+      "moves": 2849,
+      "censored": false
+    },
+    {
+      "seed": "validation-71",
+      "score": 16572,
+      "maxTile": 1024,
+      "moves": 989,
+      "censored": false
+    },
+    {
+      "seed": "validation-72",
+      "score": 16364,
+      "maxTile": 1024,
+      "moves": 966,
+      "censored": false
+    },
+    {
+      "seed": "validation-73",
+      "score": 34556,
+      "maxTile": 2048,
+      "moves": 1770,
+      "censored": false
+    },
+    {
+      "seed": "validation-74",
+      "score": 49704,
+      "maxTile": 2048,
+      "moves": 2505,
+      "censored": false
+    },
+    {
+      "seed": "validation-75",
+      "score": 30956,
+      "maxTile": 2048,
+      "moves": 1586,
+      "censored": false
+    },
+    {
+      "seed": "validation-76",
+      "score": 47720,
+      "maxTile": 4096,
+      "moves": 2144,
+      "censored": false
+    },
+    {
+      "seed": "validation-77",
+      "score": 36352,
+      "maxTile": 2048,
+      "moves": 1898,
+      "censored": false
+    },
+    {
+      "seed": "validation-78",
+      "score": 36272,
+      "maxTile": 2048,
+      "moves": 1893,
+      "censored": false
+    },
+    {
+      "seed": "validation-79",
+      "score": 36192,
+      "maxTile": 2048,
+      "moves": 1870,
+      "censored": false
+    },
+    {
+      "seed": "validation-80",
+      "score": 36508,
+      "maxTile": 2048,
+      "moves": 1906,
+      "censored": false
+    },
+    {
+      "seed": "validation-81",
+      "score": 15892,
+      "maxTile": 1024,
+      "moves": 928,
+      "censored": false
+    },
+    {
+      "seed": "validation-82",
+      "score": 27244,
+      "maxTile": 2048,
+      "moves": 1421,
+      "censored": false
+    },
+    {
+      "seed": "validation-83",
+      "score": 15932,
+      "maxTile": 1024,
+      "moves": 931,
+      "censored": false
+    },
+    {
+      "seed": "validation-84",
+      "score": 14396,
+      "maxTile": 1024,
+      "moves": 844,
+      "censored": false
+    },
+    {
+      "seed": "validation-85",
+      "score": 27600,
+      "maxTile": 2048,
+      "moves": 1454,
+      "censored": false
+    },
+    {
+      "seed": "validation-86",
+      "score": 27280,
+      "maxTile": 2048,
+      "moves": 1423,
+      "censored": false
+    },
+    {
+      "seed": "validation-87",
+      "score": 16852,
+      "maxTile": 1024,
+      "moves": 1002,
+      "censored": false
+    },
+    {
+      "seed": "validation-88",
+      "score": 27580,
+      "maxTile": 2048,
+      "moves": 1453,
+      "censored": false
+    },
+    {
+      "seed": "validation-89",
+      "score": 61440,
+      "maxTile": 4096,
+      "moves": 2901,
+      "censored": false
+    },
+    {
+      "seed": "validation-90",
+      "score": 28664,
+      "maxTile": 2048,
+      "moves": 1520,
+      "censored": false
+    },
+    {
+      "seed": "validation-91",
+      "score": 23728,
+      "maxTile": 1024,
+      "moves": 1334,
+      "censored": false
+    },
+    {
+      "seed": "validation-92",
+      "score": 16476,
+      "maxTile": 1024,
+      "moves": 982,
+      "censored": false
+    },
+    {
+      "seed": "validation-93",
+      "score": 34776,
+      "maxTile": 2048,
+      "moves": 1794,
+      "censored": false
+    },
+    {
+      "seed": "validation-94",
+      "score": 37260,
+      "maxTile": 2048,
+      "moves": 1965,
+      "censored": false
+    },
+    {
+      "seed": "validation-95",
+      "score": 27684,
+      "maxTile": 2048,
+      "moves": 1454,
+      "censored": false
+    },
+    {
+      "seed": "validation-96",
+      "score": 104292,
+      "maxTile": 4096,
+      "moves": 4623,
+      "censored": false
+    },
+    {
+      "seed": "validation-97",
+      "score": 34956,
+      "maxTile": 2048,
+      "moves": 1805,
+      "censored": false
+    },
+    {
+      "seed": "validation-98",
+      "score": 37620,
+      "maxTile": 2048,
+      "moves": 1994,
+      "censored": false
+    },
+    {
+      "seed": "validation-99",
+      "score": 52960,
+      "maxTile": 2048,
+      "moves": 2631,
+      "censored": false
+    }
+  ]
+}

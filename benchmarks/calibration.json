@@ -1,0 +1,9 @@
+{
+  "device": "NVIDIA GeForce GTX 1660 SUPER",
+  "autoThreshold": {
+    "size": 4,
+    "minHorizon": 32,
+    "minTrajectories": 512
+  },
+  "source": "gpu-results.json"
+}
